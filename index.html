@@ -89,6 +89,17 @@
   .diff-btn.selected b{color:var(--pin)}
   .start-card .btn-primary{margin-top:16px;width:100%;font-size:17px}
   .made-by{margin-top:14px;font-size:11px;letter-spacing:.04em;color:var(--dim);opacity:.6}
+  .name-row{
+    margin-top:18px;display:flex;align-items:center;gap:10px;
+    justify-content:center;
+  }
+  .name-row label{font-size:11px;letter-spacing:.14em;color:var(--dim)}
+  .name-row input[type=text]{
+    flex:1;max-width:260px;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:6px;color:var(--paper);padding:9px 12px;font-size:14px;
+  }
+  .name-row input[type=text]:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+  .name-row input[type=text]::placeholder{color:var(--dim);opacity:.7}
   .opt-row{
     display:flex;align-items:center;justify-content:center;gap:8px;
     margin-top:14px;font-size:14px;color:var(--dim);
@@ -102,7 +113,7 @@
     font-family:"IBM Plex Mono",monospace;font-size:14px;
   }
   .opt-row input[type=number]:disabled{opacity:.35}
-  /* 기록 카드: BEST 헤더 + 최근 기록 리스트 */
+  /* 기록 카드: TOP 5 헤더 + 랭킹 리스트 */
   .records{
     margin-top:14px;border:1px solid var(--line);border-radius:var(--radius);
     background:var(--panel);text-align:left;overflow:hidden;
@@ -112,13 +123,18 @@
     padding:10px 14px;border-bottom:1px solid var(--line);
   }
   .rec-best .rec-lbl{font-size:11px;letter-spacing:.14em;color:var(--dim)}
-  .rec-best b{color:var(--gold);font-size:17px}
   .rec-row{
-    display:flex;justify-content:space-between;align-items:center;
-    padding:7px 14px;font-size:13px;color:#B9CEDA;
+    display:flex;justify-content:space-between;align-items:center;gap:10px;
+    padding:8px 14px;font-size:13px;color:#B9CEDA;
   }
   .rec-row + .rec-row{border-top:1px solid rgba(40,80,107,.4)}
-  .rec-idx{color:var(--dim);font-size:12px}
+  .rec-left{display:flex;align-items:center;gap:8px;min-width:0}
+  .rec-idx{color:var(--dim);font-size:12px;flex-shrink:0;width:14px}
+  .rec-idx.gold{color:var(--gold);font-weight:700}
+  .rec-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--paper)}
+  .rec-right{display:flex;flex-direction:column;align-items:flex-end;gap:1px;flex-shrink:0}
+  .rec-score{font-weight:700}
+  .rec-date{font-size:10px;color:var(--dim)}
   .rec-empty{padding:11px 14px;font-size:12px;color:var(--dim);text-align:center}
   .records .tmr{color:var(--dim);font-size:11px;margin-left:4px}
 
@@ -396,6 +412,10 @@
       ③ 정답과 가까울수록 높은 점수 — 라운드당 최대 <span class="k mono">5,000</span>점.<br>
       ④ 총 <span class="k mono">5</span>라운드, 만점 <span class="k mono">25,000</span>점.
     </div>
+    <div class="name-row">
+      <label for="player-name" class="mono">NAME</label>
+      <input type="text" id="player-name" maxlength="12" placeholder="이름을 입력하세요 (기록에 표시돼요)">
+    </div>
     <div class="diff-group" role="radiogroup" aria-label="난이도 선택">
       <button class="diff-btn selected" role="radio" aria-checked="true" data-diff="e">
         <b>쉬움</b><span>세계적 랜드마크·독특한 지형</span>
@@ -462,6 +482,29 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<!-- 전 세계 공용 랭킹용 Firebase (Firestore) -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+/* ================= Firebase (실시간 공용 랭킹) =================
+   초기화에 실패하거나 네트워크가 막힌 환경에서는 db가 null로 남고,
+   아래 기록 관련 코드가 자동으로 로컬(localStorage) 랭킹으로 대체됨. */
+const firebaseConfig = {
+  apiKey: "AIzaSyA9dS1FpGgsuGpL4ca4GVEyDIdQtL93Clw",
+  authDomain: "pepes-recon-game.firebaseapp.com",
+  projectId: "pepes-recon-game",
+  storageBucket: "pepes-recon-game.firebasestorage.app",
+  messagingSenderId: "702949382814",
+  appId: "1:702949382814:web:2478ccf3b8407616d5f98f"
+};
+let db = null;
+try{
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+}catch(e){
+  console.warn('Firebase 초기화 실패 — 로컬 기록만 사용합니다.', e);
+}
+</script>
 <script>
 /* ================= 위치 데이터 =================
    d:'e' = 쉬움(위성에서 특징이 뚜렷한 랜드마크·지형)
@@ -684,6 +727,7 @@ const MAX_PTS = 5000;
 
 /* ================= 상태 ================= */
 let rounds = [], curRound = 0, totalScore = 0, roundHistory = [];
+let playerName = '';
 let lastGameNames = new Set(); // 직전 게임 출제 장소 (리플레이 중복 방지)
 let guessLatLng = null;
 let timerEnabled = false, timerSeconds = 60;
@@ -796,9 +840,11 @@ function startGame(){
   rounds = shuffle(pool).slice(0, TOTAL_ROUNDS);
   lastGameNames = new Set(rounds.map(r => r.name));
   curRound = 0; totalScore = 0; roundHistory = [];
+  playerName = $('player-name').value.trim().slice(0, 12) || '익명';
   timerEnabled = $('opt-timer').checked;
   timerSeconds = Math.min(600, Math.max(10, parseInt($('opt-seconds').value, 10) || 60));
   $('opt-seconds').value = timerSeconds;
+  savePrefs();
   $('hud-time-chip').classList.toggle('hidden', !timerEnabled);
   $('hud-total-rounds').textContent = TOTAL_ROUNDS;
   $('hud-score').textContent = '0';
@@ -1070,23 +1116,23 @@ function rankOf(score){
   return 'D · 동네만 아는';
 }
 
-/* ================= 기록 (localStorage, 사용 불가 환경에서는 조용히 생략) ================= */
-const REC_KEY = 'pepes-recon-records-v1';
-function loadRecords(){
+/* ================= 기록 / 랭킹 =================
+   Firestore(db)가 정상이면 'scores' 컬렉션에서 난이도별 상위 5개를 실시간 구독.
+   Firebase 초기화 실패·쿼리 실패 시에는 localStorage 기반 개인 기록으로 조용히 대체. */
+const REC_KEY = 'pepes-recon-records-v2';
+function loadLocalRecords(){
   try{ return JSON.parse(localStorage.getItem(REC_KEY)) || {}; }
   catch(e){ return {}; }
 }
-function saveRecord(diff, score){
+function saveLocalRecord(diff, score, name){
   try{
-    const rec = loadRecords();
-    const r = rec[diff] || {best:0, recent:[]};
-    r.best = Math.max(r.best, score);
-    r.recent.unshift({s:score, t:timerEnabled ? timerSeconds : 0, d:Date.now()});
-    r.recent = r.recent.slice(0, 3);
-    rec[diff] = r;
+    const rec = loadLocalRecords();
+    const list = rec[diff] || [];
+    list.push({ name, score, timer: timerEnabled ? timerSeconds : 0, createdAt: Date.now() });
+    list.sort((a,b) => b.score - a.score);
+    rec[diff] = list.slice(0, 5);
     localStorage.setItem(REC_KEY, JSON.stringify(rec));
   }catch(e){ /* 사생활 보호 모드 등 저장 불가 환경 */ }
-  renderRecords();
 }
 /* 기록 날짜 표기: 올해 기록은 "07.14 21:05", 지난해 이전은 연도 포함 */
 function fmtDate(ts){
@@ -1097,8 +1143,80 @@ function fmtDate(ts){
     + p(d.getMonth()+1) + '.' + p(d.getDate());
   return `${ymd} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
-/* 마지막으로 사용한 난이도/타이머 설정 기억 (기록과 별도 키로 저장) */
-const PREF_KEY = 'pepes-recon-prefs-v1';
+/* Firestore Timestamp / 로컬 숫자 타임스탬프를 모두 ms 숫자로 통일 */
+function toMillis(ts){
+  if(!ts) return null;
+  if(typeof ts === 'number') return ts;
+  if(typeof ts.toMillis === 'function') return ts.toMillis();
+  if(ts.seconds) return ts.seconds * 1000;
+  return null;
+}
+/* 이름 등 사용자 입력 문자열을 innerHTML에 안전하게 삽입하기 위한 이스케이프 */
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[c]));
+}
+
+function renderRecordsList(diff, list, isRemote){
+  const el = $('records');
+  if(!list.length){
+    el.innerHTML = `<div class="rec-empty">${DIFF_LABEL[diff]} 모드 · 아직 기록이 없어요</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="rec-best">
+      <span class="rec-lbl">${isRemote ? '🌐 전체 TOP 5' : 'TOP 5 (오프라인)'} · ${DIFF_LABEL[diff]}</span>
+    </div>
+    ${list.map((x,i)=>`
+      <div class="rec-row">
+        <span class="rec-left">
+          <span class="rec-idx mono${i===0 ? ' gold' : ''}">${i+1}</span>
+          <span class="rec-name">${escapeHtml(x.name)}</span>
+        </span>
+        <span class="rec-right">
+          <span class="rec-score mono">${fmt(x.score)}점${x.timer ? `<span class="tmr">⏱${x.timer}초</span>` : ''}</span>
+          <span class="rec-date mono">${fmtDate(toMillis(x.createdAt))}</span>
+        </span>
+      </div>`).join('')}`;
+}
+function renderLocalRecords(diff){
+  renderRecordsList(diff, loadLocalRecords()[diff] || [], false);
+}
+
+/* 난이도가 바뀔 때마다 이전 구독을 끊고 새 난이도로 다시 구독 */
+let unsubscribeRecords = null;
+function subscribeRecords(diff){
+  if(unsubscribeRecords){ unsubscribeRecords(); unsubscribeRecords = null; }
+  if(!db){ renderLocalRecords(diff); return; }
+  $('records').innerHTML = `<div class="rec-empty">랭킹 불러오는 중…</div>`;
+  unsubscribeRecords = db.collection('scores')
+    .where('diff', '==', diff)
+    .orderBy('score', 'desc')
+    .limit(5)
+    .onSnapshot(
+      snap => renderRecordsList(diff, snap.docs.map(d => d.data()), true),
+      err  => { console.warn('랭킹 조회 실패, 로컬 기록으로 대체', err); renderLocalRecords(diff); }
+    );
+}
+
+function saveRecord(diff, score, name){
+  const cleanName = (name || '').trim().slice(0, 12) || '익명';
+  // 오프라인 대비, 항상 로컬에도 백업
+  saveLocalRecord(diff, score, cleanName);
+  if(db){
+    db.collection('scores').add({
+      diff, name: cleanName, score,
+      timer: timerEnabled ? timerSeconds : 0,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).catch(err => console.warn('온라인 랭킹 저장 실패 (로컬에는 저장됨)', err));
+    // db가 있으면 subscribeRecords의 onSnapshot이 자동으로 화면을 갱신함
+  }else{
+    renderLocalRecords(diff);
+  }
+}
+/* 마지막으로 사용한 난이도/타이머/이름 기억 (기록과 별도 키로 저장) */
+const PREF_KEY = 'pepes-recon-prefs-v2';
 function loadPrefs(){
   try{ return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; }
   catch(e){ return {}; }
@@ -1108,7 +1226,8 @@ function savePrefs(){
     localStorage.setItem(PREF_KEY, JSON.stringify({
       diff: selectedDiff,
       timerEnabled: $('opt-timer').checked,
-      timerSeconds: parseInt($('opt-seconds').value, 10) || 60
+      timerSeconds: parseInt($('opt-seconds').value, 10) || 60,
+      name: $('player-name').value.trim().slice(0, 12)
     }));
   }catch(e){ /* 저장 불가 환경은 조용히 무시 */ }
 }
@@ -1127,25 +1246,7 @@ function applyPrefs(){
     $('opt-seconds').disabled = !p.timerEnabled;
   }
   if(p.timerSeconds) $('opt-seconds').value = p.timerSeconds;
-}
-
-function renderRecords(){
-  const el = $('records');
-  const r = loadRecords()[selectedDiff];
-  if(!r || !r.recent.length){
-    el.innerHTML = `<div class="rec-empty">${DIFF_LABEL[selectedDiff]} 모드 · 아직 기록이 없어요</div>`;
-    return;
-  }
-  el.innerHTML = `
-    <div class="rec-best">
-      <span class="rec-lbl">BEST · ${DIFF_LABEL[selectedDiff]}</span>
-      <b class="mono">${fmt(r.best)}점</b>
-    </div>
-    ${r.recent.map(x=>`
-      <div class="rec-row">
-        <span class="rec-idx mono">${fmtDate(x.d)}</span>
-        <span class="mono">${fmt(x.s)}점${x.t ? `<span class="tmr">⏱${x.t}초</span>` : ''}</span>
-      </div>`).join('')}`;
+  if(p.name) $('player-name').value = p.name;
 }
 
 function showFinal(){
@@ -1161,9 +1262,13 @@ function showFinal(){
       <span><span class="dist mono">${h.km==null ? '시간초과' : (h.km<10 ? h.km.toFixed(1) : fmt(Math.round(h.km)))+' km'}</span>
       &nbsp;<span class="pt mono">+${fmt(h.pts)}</span></span>
     </div>`).join('');
-  const prevBest = (loadRecords()[selectedDiff] || {best:0}).best;
-  $('final-newbest').classList.toggle('hidden', !(totalScore > prevBest));
-  saveRecord(selectedDiff, totalScore);
+  // 참고용 비교는 로컬 기록 기준(온라인 랭킹은 비동기라 즉시 비교가 어려움)
+  const prevList = loadLocalRecords()[selectedDiff] || [];
+  const isNo1 = prevList.length > 0 && totalScore > prevList[0].score;
+  const madeTop5 = prevList.length < 5 || totalScore > prevList[prevList.length-1].score;
+  $('final-newbest').textContent = isNo1 || !prevList.length ? '🏆 신기록 갱신!' : '🏅 TOP 5 진입!';
+  $('final-newbest').classList.toggle('hidden', !madeTop5);
+  saveRecord(selectedDiff, totalScore, playerName);
   $('screen-final').classList.remove('hidden');
 }
 
@@ -1186,7 +1291,7 @@ document.querySelectorAll('.diff-btn').forEach(btn=>{
     btn.classList.add('selected');
     btn.setAttribute('aria-checked','true');
     selectedDiff = btn.dataset.diff;
-    renderRecords();
+    subscribeRecords(selectedDiff);
     savePrefs();
   });
 });
@@ -1195,6 +1300,7 @@ $('opt-timer').addEventListener('change', e=>{
   savePrefs();
 });
 $('opt-seconds').addEventListener('change', savePrefs);
+$('player-name').addEventListener('change', savePrefs);
 
 /* 중도 종료: 진행 상황을 버리고 홈 화면으로 */
 function quitGame(){
@@ -1273,7 +1379,7 @@ document.addEventListener('keydown', e=>{
 });
 $('pool-count').textContent = LOCATIONS.length;
 applyPrefs();
-renderRecords();
+subscribeRecords(selectedDiff);
 $('toggle-guess').addEventListener('click', ()=>{
   const p = $('guess-panel');
   p.classList.toggle('open');

@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pepe's Recon Game</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=IBM+Plex+Sans+KR:wght@400;500;700&family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0D1B26;        /* 심해 차트 네이비 */
+    --panel:#13293A;      /* 패널 */
+    --panel-2:#0F2130;
+    --line:#28506B;       /* 등심선 */
+    --paper:#DCE8EE;      /* 해도 종이색 텍스트 */
+    --dim:#7FA0B4;
+    --pin:#FF5347;        /* 핀 레드 */
+    --gold:#F2C14E;       /* 점수 골드 */
+    --radius:10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"IBM Plex Sans KR",system-ui,sans-serif;
+    background:var(--ink);color:var(--paper);
+    overflow:hidden;
+  }
+  .mono{font-family:"IBM Plex Mono",monospace}
+
+  /* ---------- 공통 ---------- */
+  button{
+    font-family:inherit;cursor:pointer;border:none;border-radius:var(--radius);
+    transition:transform .12s ease, background .15s ease, box-shadow .15s ease;
+  }
+  button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+  .btn-primary{
+    background:var(--pin);color:#fff;font-weight:700;font-size:16px;
+    padding:14px 28px;letter-spacing:.02em;
+    box-shadow:0 4px 0 #B33228;
+  }
+  .btn-primary:hover{transform:translateY(-1px)}
+  .btn-primary:active{transform:translateY(2px);box-shadow:0 1px 0 #B33228}
+  .btn-primary:disabled{background:#3A5568;box-shadow:none;cursor:not-allowed;color:#89A3B3}
+  .btn-ghost{
+    background:transparent;color:var(--dim);border:1px solid var(--line);
+    padding:12px 22px;font-weight:500;font-size:14px;
+  }
+  .btn-ghost:hover{color:var(--paper);border-color:var(--dim)}
+
+  /* ---------- 레이어 구조 ---------- */
+  #mystery-map,#screen-start,#screen-result,#screen-final{position:fixed;inset:0}
+  #mystery-map{z-index:1;background:#06121B}
+  .screen{z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(9,20,29,.82);backdrop-filter:blur(8px);overflow-y:auto;padding:16px 0}
+  /* 카드가 화면보다 길어지면 잘리는 대신 스크롤되도록 margin:auto 중앙정렬 */
+  .start-card,.final-card{margin:auto}
+  #screen-start{background:rgba(6,14,20,.96)}
+  .hidden{display:none!important}
+
+  /* ---------- 시작 화면 ---------- */
+  .start-card{max-width:520px;width:calc(100% - 40px);text-align:center;padding:20px}
+  .logotype{
+    font-family:"Bricolage Grotesque","IBM Plex Sans KR",sans-serif;
+    font-weight:800;font-size:clamp(44px,9vw,76px);line-height:.95;
+    letter-spacing:-.02em;color:var(--paper);
+  }
+  .logotype .slash{color:var(--pin)}
+  .subtitle{margin-top:14px;color:var(--dim);font-size:15px}
+  .coords-ticker{
+    margin-top:6px;font-size:12px;color:var(--pin);letter-spacing:.12em;
+  }
+  .rules{
+    margin:30px auto 0;text-align:left;border:1px solid var(--line);
+    border-radius:var(--radius);background:var(--panel);
+    padding:20px 22px;font-size:14px;line-height:1.8;color:#B9CEDA;
+  }
+  .rules b{color:var(--paper)}
+  .rules .k{color:var(--gold);font-weight:700}
+  .diff-group{display:flex;gap:8px;margin-top:18px}
+  .diff-btn{
+    flex:1;background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius);padding:12px 8px;color:var(--dim);
+    display:flex;flex-direction:column;gap:4px;align-items:center;
+  }
+  .diff-btn b{font-size:15px;color:var(--paper)}
+  .diff-btn span{font-size:11px;line-height:1.4}
+  .diff-btn:hover{border-color:var(--dim)}
+  .diff-btn.selected{border-color:var(--pin);background:rgba(255,83,71,.12);box-shadow:inset 0 0 0 1px var(--pin)}
+  .diff-btn.selected b{color:var(--pin)}
+  .start-card .btn-primary{margin-top:16px;width:100%;font-size:17px}
+  .made-by{margin-top:14px;font-size:11px;letter-spacing:.04em;color:var(--dim);opacity:.6}
+  .opt-row{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    margin-top:14px;font-size:14px;color:var(--dim);
+  }
+  .opt-row label{display:flex;align-items:center;gap:8px;cursor:pointer}
+  .opt-row label:hover{color:var(--paper)}
+  .opt-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--pin);cursor:pointer}
+  .opt-row input[type=number]{
+    width:76px;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:6px;color:var(--paper);padding:6px 8px;text-align:center;
+    font-family:"IBM Plex Mono",monospace;font-size:14px;
+  }
+  .opt-row input[type=number]:disabled{opacity:.35}
+  /* 기록 카드: BEST 헤더 + 최근 기록 리스트 */
+  .records{
+    margin-top:14px;border:1px solid var(--line);border-radius:var(--radius);
+    background:var(--panel);text-align:left;overflow:hidden;
+  }
+  .rec-best{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 14px;border-bottom:1px solid var(--line);
+  }
+  .rec-best .rec-lbl{font-size:11px;letter-spacing:.14em;color:var(--dim)}
+  .rec-best b{color:var(--gold);font-size:17px}
+  .rec-row{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:7px 14px;font-size:13px;color:#B9CEDA;
+  }
+  .rec-row + .rec-row{border-top:1px solid rgba(40,80,107,.4)}
+  .rec-idx{color:var(--dim);font-size:12px}
+  .rec-empty{padding:11px 14px;font-size:12px;color:var(--dim);text-align:center}
+  .records .tmr{color:var(--dim);font-size:11px;margin-left:4px}
+
+  /* ---------- HUD ---------- */
+  #hud{
+    position:fixed;top:0;left:0;right:0;z-index:10;
+    display:flex;justify-content:space-between;align-items:flex-start;
+    padding:14px 16px;pointer-events:none;
+  }
+  .hud-chip{
+    background:rgba(13,27,38,.88);border:1px solid var(--line);
+    border-radius:var(--radius);padding:8px 14px;backdrop-filter:blur(4px);
+  }
+  .hud-chip .lbl{font-size:10px;letter-spacing:.18em;color:var(--dim)}
+  .hud-chip .val{font-size:18px;font-weight:700;color:var(--paper)}
+  .hud-chip .val em{font-style:normal;color:var(--gold)}
+  #hud-time.warn{color:var(--pin)}
+  #hud-right{display:flex;gap:10px;align-items:stretch}
+  @media (max-width:699px){
+    #hud{padding:10px}
+    .hud-chip{padding:6px 10px}
+    .hud-chip .val{font-size:15px}
+    #hud-right{gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  }
+  @media (max-width:480px){
+    #hud-mode-chip{display:none} /* 초협소 화면: 덜 중요한 MODE 칩 숨김 */
+  }
+  /* HUD(라운드 칩)와 겹치지 않도록 줌 컨트롤을 아래로 내림 */
+  #mystery-map .leaflet-top.leaflet-left .leaflet-control-zoom{margin-top:74px}
+  .recenter-btn{
+    display:block;width:34px;height:34px;border-radius:8px;
+    font-size:20px;line-height:1;padding:0;
+    background:rgba(13,27,38,.88);color:var(--paper);
+    border:1px solid var(--line);backdrop-filter:blur(4px);
+    box-shadow:0 1px 5px rgba(0,0,0,.4);
+  }
+  .recenter-btn:hover{border-color:var(--gold);color:var(--gold)}
+  #btn-quit{
+    pointer-events:auto;
+    background:rgba(13,27,38,.88);border:1px solid var(--line);
+    border-radius:var(--radius);padding:8px 14px;color:var(--dim);
+    font-size:13px;font-weight:500;backdrop-filter:blur(4px);
+  }
+  #btn-quit:hover{color:var(--paper);border-color:var(--pin)}
+
+  /* 조준 십자선 (시그니처) */
+  #reticle{
+    position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    z-index:5;pointer-events:none;opacity:.55;
+  }
+  #reticle svg{display:block}
+  #reticle .ring{animation:spin 24s linear infinite;transform-origin:center}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #reticle.pulse svg{animation:ret-pulse .55s ease}
+  @keyframes ret-pulse{0%{transform:scale(1)}40%{transform:scale(1.28)}100%{transform:scale(1)}}
+  @media (prefers-reduced-motion:reduce){
+    #reticle .ring{animation:none}
+    #reticle.pulse svg{animation:none}
+    .q-marker .qr{animation:none}
+  }
+
+  /* 문제 지점 고정 마커 (지도를 움직여도 정답 위치에 남음) */
+  .q-marker{filter:drop-shadow(0 1px 4px rgba(0,0,0,.7));pointer-events:none}
+  .q-marker svg{display:block}
+  .q-marker .qr{animation:spin 18s linear infinite;transform-origin:center}
+
+  /* ---------- 추측 패널 ---------- */
+  #guess-panel{
+    position:fixed;right:16px;bottom:16px;z-index:20;
+    width:min(340px,calc(100vw - 32px));
+    border:1px solid var(--line);border-radius:12px;overflow:hidden;
+    background:var(--panel);box-shadow:0 12px 40px rgba(0,0,0,.5);
+    transition:width .2s ease,height .2s ease;
+  }
+  #guess-map{height:220px;background:#0A1822;transition:height .2s ease}
+  @media (min-width:700px){
+    #guess-panel:hover, #guess-panel.expanded{width:min(560px,calc(100vw - 32px))}
+    #guess-panel:hover #guess-map, #guess-panel.expanded #guess-map{height:360px}
+  }
+  #guess-footer{display:flex;gap:8px;padding:10px}
+  #guess-footer .btn-primary{flex:1;padding:12px;font-size:15px}
+  #guess-hint{
+    padding:8px 12px;font-size:11px;color:var(--dim);letter-spacing:.06em;
+    border-bottom:1px solid var(--line);display:flex;justify-content:space-between;
+  }
+  #guess-coord{color:var(--gold)}
+  #toggle-guess{display:none}
+
+  /* ---------- 현장 사진 패널 ---------- */
+  #toggle-photos{
+    position:fixed;left:16px;bottom:16px;z-index:20;
+    background:var(--panel);color:var(--paper);border:1px solid var(--line);
+    font-weight:700;padding:12px 18px;border-radius:999px;font-size:14px;
+    box-shadow:0 6px 20px rgba(0,0,0,.45);
+  }
+  #toggle-photos:hover{border-color:var(--dim)}
+  #toggle-photos .cnt{color:var(--gold)}
+  #photo-panel{
+    position:fixed;left:16px;bottom:16px;z-index:21;
+    width:min(460px,calc(100vw - 32px));
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.5);
+  }
+  #photo-hint{
+    padding:8px 12px;font-size:11px;color:var(--dim);letter-spacing:.06em;
+    border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;
+  }
+  #close-photos{background:none;color:var(--dim);font-size:14px;padding:2px 6px}
+  #close-photos:hover{color:var(--paper)}
+  #photo-strip{
+    display:flex;gap:8px;padding:10px;overflow-x:auto;
+    scrollbar-width:thin;
+  }
+  #photo-strip img{
+    height:110px;border-radius:6px;cursor:zoom-in;flex-shrink:0;
+    border:1px solid var(--line);transition:transform .12s ease;
+  }
+  #photo-strip img:hover{transform:scale(1.04)}
+  .photo-msg{color:var(--dim);font-size:13px;padding:20px 8px;white-space:nowrap}
+  #lightbox{
+    position:fixed;inset:0;z-index:60;background:rgba(6,14,20,.92);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:10px;cursor:zoom-out;
+  }
+  #lightbox img{max-width:92vw;max-height:82vh;border-radius:8px;border:1px solid var(--line)}
+  #lightbox-credit{font-size:11px;color:var(--dim);letter-spacing:.08em}
+  @media (max-width:699px){
+    #toggle-photos{bottom:76px}
+    #photo-panel{bottom:76px}
+    #toggle-guess{
+      display:block;position:fixed;right:16px;bottom:16px;z-index:21;
+      background:var(--pin);color:#fff;font-weight:700;padding:14px 20px;
+      border-radius:999px;box-shadow:0 6px 20px rgba(0,0,0,.45);font-size:15px;
+    }
+    #guess-panel{display:none}
+    #guess-panel.open{display:block;left:12px;right:12px;bottom:12px;width:auto}
+    #guess-panel.open #guess-map{height:46vh}
+  }
+
+  /* ---------- 결과 화면 ---------- */
+  #screen-result{display:flex;flex-direction:column;background:var(--ink);z-index:40}
+  #result-map{flex:1;min-height:0}
+  #result-card{
+    border-top:2px solid var(--pin);background:var(--panel-2);
+    padding:18px 20px 22px;display:flex;flex-wrap:wrap;gap:18px;
+    align-items:center;justify-content:space-between;
+  }
+  .result-place{min-width:200px}
+  .result-place .name{font-size:20px;font-weight:700}
+  .result-place .country{color:var(--dim);font-size:13px;margin-top:2px}
+  .res-credits{margin-top:6px;font-size:11px;color:var(--dim);letter-spacing:.04em}
+  .res-credits a{color:var(--dim)}
+  .res-credits a:hover{color:var(--paper)}
+  .result-stats{display:flex;gap:26px;align-items:center}
+  .stat .lbl{font-size:10px;letter-spacing:.18em;color:var(--dim)}
+  .stat .val{font-size:26px;font-weight:700}
+  .stat .val.gold{color:var(--gold)}
+  .scorebar{
+    width:min(280px,60vw);height:8px;border-radius:4px;background:#22394B;
+    overflow:hidden;margin-top:6px;
+  }
+  .scorebar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--pin),var(--gold));transition:width .9s cubic-bezier(.2,.8,.2,1)}
+
+  /* ---------- 최종 화면 ---------- */
+  .final-card{
+    max-width:480px;width:calc(100% - 40px);background:var(--panel);
+    border:1px solid var(--line);border-radius:14px;padding:30px 26px;text-align:center;
+  }
+  .final-card h2{font-family:"Bricolage Grotesque","IBM Plex Sans KR",sans-serif;font-weight:800;font-size:30px}
+  .final-total{font-size:52px;font-weight:700;color:var(--gold);margin:8px 0 2px}
+  .final-total .unit{
+    font-size:26px;font-weight:700;margin-left:2px;
+    font-family:"IBM Plex Sans KR",sans-serif;
+  }
+  .final-sub{color:var(--dim);font-size:13px}
+  .final-rounds{margin:22px 0;border-top:1px solid var(--line)}
+  .final-rounds .row{
+    display:flex;justify-content:space-between;padding:10px 4px;
+    border-bottom:1px solid var(--line);font-size:14px;
+  }
+  .final-rounds .row .pt{color:var(--gold);font-weight:700}
+  .final-rounds .row .dist{color:var(--dim)}
+  .rank-badge{
+    display:inline-block;margin-top:6px;padding:4px 14px;border-radius:999px;
+    border:1px solid var(--gold);color:var(--gold);font-size:12px;letter-spacing:.1em;
+  }
+  .newbest{margin-top:10px;color:var(--gold);font-weight:700;font-size:14px}
+  #final-share-area{padding:6px 4px 2px}
+  .share-brand{margin-top:2px;margin-bottom:14px;font-size:10px;letter-spacing:.24em;color:var(--dim)}
+  .final-card .btn-primary{width:100%;margin-top:6px}
+
+  .leaflet-container{font-family:"IBM Plex Sans KR",sans-serif}
+</style>
+</head>
+<body>
+
+<!-- 미스터리 위성 지도 -->
+<div id="mystery-map"></div>
+
+<!-- 조준 십자선 -->
+<div id="reticle" aria-hidden="true">
+  <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+    <g class="ring" stroke="#DCE8EE" stroke-width="1" opacity=".8">
+      <circle cx="60" cy="60" r="46" stroke-dasharray="4 7"/>
+    </g>
+    <circle cx="60" cy="60" r="28" stroke="#FF5347" stroke-width="1.2"/>
+    <line x1="60" y1="18" x2="60" y2="40" stroke="#FF5347" stroke-width="1.2"/>
+    <line x1="60" y1="80" x2="60" y2="102" stroke="#FF5347" stroke-width="1.2"/>
+    <line x1="18" y1="60" x2="40" y2="60" stroke="#FF5347" stroke-width="1.2"/>
+    <line x1="80" y1="60" x2="102" y2="60" stroke="#FF5347" stroke-width="1.2"/>
+    <circle cx="60" cy="60" r="2" fill="#FF5347"/>
+  </svg>
+</div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div class="hud-chip">
+    <div class="lbl">ROUND</div>
+    <div class="val mono"><span id="hud-round">1</span> / <span id="hud-total-rounds">5</span></div>
+  </div>
+  <div id="hud-right">
+    <div class="hud-chip hidden" id="hud-time-chip">
+      <div class="lbl">TIME</div>
+      <div class="val mono" id="hud-time">60</div>
+    </div>
+    <div class="hud-chip" id="hud-mode-chip">
+      <div class="lbl">MODE</div>
+      <div class="val" id="hud-diff" style="font-size:14px;line-height:1.7">쉬움</div>
+    </div>
+    <div class="hud-chip">
+      <div class="lbl">SCORE</div>
+      <div class="val mono"><em id="hud-score">0</em></div>
+    </div>
+    <button id="btn-quit" title="게임을 종료하고 홈으로">✕ 종료</button>
+  </div>
+</div>
+
+<!-- 현장 사진 패널 (Wikimedia Commons) -->
+<button id="toggle-photos" class="hidden">📷 현장 사진</button>
+<div id="photo-panel" class="hidden">
+  <div id="photo-hint" class="mono">
+    <span>FIELD PHOTOS · WIKIMEDIA COMMONS</span>
+    <button id="close-photos" aria-label="닫기">✕</button>
+  </div>
+  <div id="photo-strip"><div class="photo-msg">사진 수신 중…</div></div>
+</div>
+<div id="lightbox" class="hidden">
+  <img id="lightbox-img" alt="현장 사진">
+  <div id="lightbox-credit" class="mono">© Wikimedia Commons</div>
+</div>
+
+<!-- 추측 패널 -->
+<button id="toggle-guess" class="hidden">📍 위치 찍기</button>
+<div id="guess-panel" class="hidden">
+  <div id="guess-hint" class="mono">
+    <span>GUESS MAP · 지도를 클릭</span>
+    <span id="guess-coord">--.---- , --.----</span>
+  </div>
+  <div id="guess-map"></div>
+  <div id="guess-footer">
+    <button id="btn-guess" class="btn-primary" disabled>추측 확정</button>
+  </div>
+</div>
+
+<!-- 시작 화면 -->
+<div id="screen-start" class="screen">
+  <div class="start-card">
+    <div class="logotype">PEPE'S<span class="slash">//</span><br>RECON GAME</div>
+    <div class="subtitle">사진만 보고 지구 어딘가를 찾아내는 게임</div>
+    <div class="coords-ticker mono" id="ticker">37.5665°N , 126.9780°E</div>
+    <div class="rules">
+      <b>임무 브리핑</b><br>
+      ① 정찰 위성 화면 + 좌측 하단 <b>📷 현장 사진</b>이 단서.<br>
+      ② 우측 하단 지도에서 예상 위치를 클릭하고 <b>추측 확정</b>.<br>
+      ③ 정답과 가까울수록 높은 점수 — 라운드당 최대 <span class="k mono">5,000</span>점.<br>
+      ④ 총 <span class="k mono">5</span>라운드, 만점 <span class="k mono">25,000</span>점.
+    </div>
+    <div class="diff-group" role="radiogroup" aria-label="난이도 선택">
+      <button class="diff-btn selected" role="radio" aria-checked="true" data-diff="e">
+        <b>쉬움</b><span>세계적 랜드마크·독특한 지형</span>
+      </button>
+      <button class="diff-btn" role="radio" aria-checked="false" data-diff="h">
+        <b>어려움</b><span>단서가 적은 도시들</span>
+      </button>
+      <button class="diff-btn" role="radio" aria-checked="false" data-diff="all">
+        <b>혼합</b><span>전체 <span id="pool-count" class="mono">0</span>곳 랜덤</span>
+      </button>
+    </div>
+    <div class="opt-row">
+      <label><input type="checkbox" id="opt-timer"> ⏱ 라운드 제한시간</label>
+      <input type="number" id="opt-seconds" value="60" min="10" max="600" step="5" disabled>
+      <span>초</span>
+    </div>
+    <div class="records" id="records"></div>
+    <button id="btn-start" class="btn-primary">게임 시작</button>
+    <div class="made-by mono">made by shinhyunsu</div>
+  </div>
+</div>
+
+<!-- 라운드 결과 화면 -->
+<div id="screen-result" class="hidden">
+  <div id="result-map"></div>
+  <div id="result-card">
+    <div class="result-place">
+      <div class="name" id="res-name">—</div>
+      <div class="country mono" id="res-country">—</div>
+      <div class="res-credits mono" id="res-credits"></div>
+    </div>
+    <div class="result-stats">
+      <div class="stat">
+        <div class="lbl">DISTANCE</div>
+        <div class="val mono" id="res-dist">— km</div>
+      </div>
+      <div class="stat">
+        <div class="lbl">POINTS</div>
+        <div class="val gold mono" id="res-pts">+0</div>
+        <div class="scorebar"><i id="res-bar"></i></div>
+      </div>
+    </div>
+    <button id="btn-next" class="btn-primary">다음 라운드</button>
+  </div>
+</div>
+
+<!-- 최종 결과 화면 -->
+<div id="screen-final" class="screen hidden">
+  <div class="final-card">
+    <div id="final-share-area">
+      <h2>게임 종료</h2>
+      <div class="final-total mono"><span id="final-total">0</span><span class="unit">점</span></div>
+      <div class="final-sub"><span id="final-diff">쉬움</span> 모드</div>
+      <div><span class="rank-badge mono" id="final-rank">—</span></div>
+      <div class="newbest hidden" id="final-newbest">🏆 신기록 갱신!</div>
+      <div class="final-rounds" id="final-rounds"></div>
+      <div class="share-brand mono">PEPE'S // RECON GAME</div>
+    </div>
+    <button id="btn-share" class="btn-ghost" style="width:100%;margin-bottom:10px">📸 결과 이미지 저장</button>
+    <button id="btn-replay" class="btn-primary">같은 난이도로 다시</button>
+    <button id="btn-change-diff" class="btn-ghost" style="width:100%;margin-top:10px">난이도 변경</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+/* ================= 위치 데이터 =================
+   d:'e' = 쉬움(위성에서 특징이 뚜렷한 랜드마크·지형)
+   d:'h' = 어려움(단서가 적은 중대형 도시·평범한 지형)      */
+const LOCATIONS = [
+  /* ---------- 쉬움 · 한국 ---------- */
+  {lat:37.5512,lng:126.9882,name:"서울 남산 일대",country:"대한민국",d:'e'},
+  {lat:37.5219,lng:126.9245,name:"서울 여의도",country:"대한민국",d:'e'},
+  {lat:35.1587,lng:129.1604,name:"부산 해운대",country:"대한민국",d:'e'},
+  {lat:33.4586,lng:126.9425,name:"제주 성산일출봉",country:"대한민국",d:'e'},
+  {lat:37.4602,lng:126.4407,name:"인천국제공항",country:"대한민국",d:'e'},
+  /* ---------- 쉬움 · 아시아 ---------- */
+  {lat:35.6595,lng:139.7005,name:"도쿄 시부야",country:"일본",d:'e'},
+  {lat:35.6191,lng:139.7799,name:"도쿄 오다이바",country:"일본",d:'e'},
+  {lat:35.3606,lng:138.7274,name:"후지산",country:"일본",d:'e'},
+  {lat:34.6873,lng:135.5262,name:"오사카성",country:"일본",d:'e'},
+  {lat:39.9163,lng:116.3972,name:"베이징 자금성",country:"중국",d:'e'},
+  {lat:31.2304,lng:121.4737,name:"상하이 와이탄",country:"중국",d:'e'},
+  {lat:22.2830,lng:114.1588,name:"홍콩 빅토리아하버",country:"홍콩",d:'e'},
+  {lat:25.0340,lng:121.5645,name:"타이베이 101",country:"대만",d:'e'},
+  {lat:1.2838,lng:103.8603,name:"싱가포르 마리나베이",country:"싱가포르",d:'e'},
+  {lat:13.7402,lng:100.4886,name:"방콕 짜오프라야강",country:"태국",d:'e'},
+  {lat:13.4125,lng:103.8670,name:"앙코르와트",country:"캄보디아",d:'e'},
+  {lat:27.1751,lng:78.0421,name:"타지마할",country:"인도",d:'e'},
+  {lat:18.9432,lng:72.8238,name:"뭄바이 마린드라이브",country:"인도",d:'e'},
+  {lat:25.1124,lng:55.1390,name:"팜 주메이라",country:"아랍에미리트",d:'e'},
+  {lat:25.1972,lng:55.2744,name:"두바이 부르즈 할리파",country:"아랍에미리트",d:'e'},
+  {lat:30.3285,lng:35.4444,name:"페트라",country:"요르단",d:'e'},
+  {lat:31.7767,lng:35.2345,name:"예루살렘 구시가",country:"이스라엘",d:'e'},
+  {lat:41.0201,lng:28.9770,name:"이스탄불 보스포루스",country:"튀르키예",d:'e'},
+  {lat:38.6431,lng:34.8289,name:"카파도키아",country:"튀르키예",d:'e'},
+  {lat:4.1755,lng:73.5093,name:"몰디브 말레",country:"몰디브",d:'e'},
+  /* ---------- 쉬움 · 유럽 ---------- */
+  {lat:45.4341,lng:12.3388,name:"베네치아",country:"이탈리아",d:'e'},
+  {lat:41.8902,lng:12.4922,name:"로마 콜로세움",country:"이탈리아",d:'e'},
+  {lat:41.9029,lng:12.4534,name:"바티칸",country:"바티칸",d:'e'},
+  {lat:43.7230,lng:10.3966,name:"피사의 사탑",country:"이탈리아",d:'e'},
+  {lat:41.3935,lng:2.1651,name:"바르셀로나 에이샴플러",country:"스페인",d:'e'},
+  {lat:36.1408,lng:-5.3536,name:"지브롤터",country:"영국령",d:'e'},
+  {lat:48.8584,lng:2.2945,name:"파리 에펠탑",country:"프랑스",d:'e'},
+  {lat:48.6361,lng:-1.5115,name:"몽생미셸",country:"프랑스",d:'e'},
+  {lat:51.5007,lng:-0.1246,name:"런던 웨스트민스터",country:"영국",d:'e'},
+  {lat:52.3730,lng:4.8924,name:"암스테르담 운하지구",country:"네덜란드",d:'e'},
+  {lat:52.5163,lng:13.3777,name:"베를린 브란덴부르크문",country:"독일",d:'e'},
+  {lat:50.0870,lng:14.4207,name:"프라하 구시가",country:"체코",d:'e'},
+  {lat:47.5076,lng:19.0458,name:"부다페스트 국회의사당",country:"헝가리",d:'e'},
+  {lat:37.9715,lng:23.7257,name:"아테네 아크로폴리스",country:"그리스",d:'e'},
+  {lat:36.4167,lng:25.4310,name:"산토리니",country:"그리스",d:'e'},
+  {lat:42.6410,lng:18.1078,name:"두브로브니크",country:"크로아티아",d:'e'},
+  {lat:55.7520,lng:37.6175,name:"모스크바 크렘린",country:"러시아",d:'e'},
+  {lat:59.9398,lng:30.3146,name:"상트페테르부르크",country:"러시아",d:'e'},
+  {lat:64.1466,lng:-21.9426,name:"레이캬비크",country:"아이슬란드",d:'e'},
+  {lat:46.2074,lng:6.1556,name:"제네바 호수",country:"스위스",d:'e'},
+  /* ---------- 쉬움 · 아메리카 ---------- */
+  {lat:40.7812,lng:-73.9665,name:"맨해튼 센트럴파크",country:"미국",d:'e'},
+  {lat:40.6892,lng:-74.0445,name:"자유의 여신상",country:"미국",d:'e'},
+  {lat:37.8199,lng:-122.4783,name:"골든게이트 브리지",country:"미국",d:'e'},
+  {lat:36.1147,lng:-115.1728,name:"라스베이거스 스트립",country:"미국",d:'e'},
+  {lat:36.0544,lng:-112.1401,name:"그랜드캐니언",country:"미국",d:'e'},
+  {lat:43.0799,lng:-79.0747,name:"나이아가라 폭포",country:"캐나다/미국",d:'e'},
+  {lat:38.8895,lng:-77.0353,name:"워싱턴 내셔널몰",country:"미국",d:'e'},
+  {lat:25.7907,lng:-80.1300,name:"마이애미비치",country:"미국",d:'e'},
+  {lat:28.5729,lng:-80.6490,name:"케네디 우주센터",country:"미국",d:'e'},
+  {lat:21.2793,lng:-157.8292,name:"하와이 와이키키",country:"미국",d:'e'},
+  {lat:8.9967,lng:-79.5910,name:"파나마 운하",country:"파나마",d:'e'},
+  {lat:-22.9711,lng:-43.1822,name:"리우 코파카바나",country:"브라질",d:'e'},
+  {lat:-15.7975,lng:-47.8919,name:"브라질리아",country:"브라질",d:'e'},
+  {lat:-34.6037,lng:-58.3816,name:"부에노스아이레스",country:"아르헨티나",d:'e'},
+  {lat:-13.1631,lng:-72.5450,name:"마추픽추",country:"페루",d:'e'},
+  {lat:-20.1338,lng:-67.4891,name:"우유니 소금사막",country:"볼리비아",d:'e'},
+  {lat:-25.6953,lng:-54.4367,name:"이과수 폭포",country:"브라질/아르헨티나",d:'e'},
+  {lat:19.4326,lng:-99.1332,name:"멕시코시티 소칼로",country:"멕시코",d:'e'},
+  {lat:20.6843,lng:-88.5678,name:"치첸이트사",country:"멕시코",d:'e'},
+  {lat:21.1350,lng:-86.7470,name:"칸쿤 호텔존",country:"멕시코",d:'e'},
+  /* ---------- 쉬움 · 아프리카/오세아니아 ---------- */
+  {lat:29.9773,lng:31.1325,name:"기자 피라미드",country:"이집트",d:'e'},
+  {lat:-33.9575,lng:18.4614,name:"케이프타운 테이블마운틴",country:"남아공",d:'e'},
+  {lat:-17.9243,lng:25.8572,name:"빅토리아 폭포",country:"잠비아/짐바브웨",d:'e'},
+  {lat:-3.0674,lng:37.3556,name:"킬리만자로",country:"탄자니아",d:'e'},
+  {lat:-33.8568,lng:151.2153,name:"시드니 오페라하우스",country:"호주",d:'e'},
+  {lat:-28.0167,lng:153.4000,name:"골드코스트",country:"호주",d:'e'},
+  {lat:-25.3444,lng:131.0369,name:"울룰루",country:"호주",d:'e'},
+  {lat:-16.5004,lng:-151.7415,name:"보라보라",country:"프랑스령 폴리네시아",d:'e'},
+
+  /* ---------- 어려움 · 한국 ---------- */
+  {lat:36.3504,lng:127.3845,name:"대전",country:"대한민국",d:'h'},
+  {lat:35.1595,lng:126.8526,name:"광주",country:"대한민국",d:'h'},
+  {lat:35.5384,lng:129.3114,name:"울산",country:"대한민국",d:'h'},
+  {lat:35.8150,lng:127.1530,name:"전주",country:"대한민국",d:'h'},
+  {lat:37.8813,lng:127.7298,name:"춘천",country:"대한민국",d:'h'},
+  {lat:36.0190,lng:129.3435,name:"포항",country:"대한민국",d:'h'},
+  {lat:34.7604,lng:127.6622,name:"여수",country:"대한민국",d:'h'},
+  {lat:37.7519,lng:128.8761,name:"강릉",country:"대한민국",d:'h'},
+  /* ---------- 어려움 · 아시아 ---------- */
+  {lat:43.0618,lng:141.3545,name:"삿포로",country:"일본",d:'h'},
+  {lat:33.5904,lng:130.4017,name:"후쿠오카",country:"일본",d:'h'},
+  {lat:35.1815,lng:136.9066,name:"나고야",country:"일본",d:'h'},
+  {lat:34.3853,lng:132.4553,name:"히로시마",country:"일본",d:'h'},
+  {lat:38.2682,lng:140.8694,name:"센다이",country:"일본",d:'h'},
+  {lat:36.5613,lng:136.6562,name:"가나자와",country:"일본",d:'h'},
+  {lat:30.5728,lng:104.0668,name:"청두",country:"중국",d:'h'},
+  {lat:34.3416,lng:108.9398,name:"시안",country:"중국",d:'h'},
+  {lat:29.5630,lng:106.5516,name:"충칭",country:"중국",d:'h'},
+  {lat:45.8038,lng:126.5350,name:"하얼빈",country:"중국",d:'h'},
+  {lat:22.5431,lng:114.0579,name:"선전",country:"중국",d:'h'},
+  {lat:21.0285,lng:105.8542,name:"하노이",country:"베트남",d:'h'},
+  {lat:10.8231,lng:106.6297,name:"호치민",country:"베트남",d:'h'},
+  {lat:16.0544,lng:108.2022,name:"다낭",country:"베트남",d:'h'},
+  {lat:11.5564,lng:104.9282,name:"프놈펜",country:"캄보디아",d:'h'},
+  {lat:17.9757,lng:102.6331,name:"비엔티안",country:"라오스",d:'h'},
+  {lat:16.8409,lng:96.1735,name:"양곤",country:"미얀마",d:'h'},
+  {lat:14.5995,lng:120.9842,name:"마닐라",country:"필리핀",d:'h'},
+  {lat:10.3157,lng:123.8854,name:"세부",country:"필리핀",d:'h'},
+  {lat:-6.2088,lng:106.8456,name:"자카르타",country:"인도네시아",d:'h'},
+  {lat:-8.6705,lng:115.2126,name:"덴파사르(발리)",country:"인도네시아",d:'h'},
+  {lat:3.1390,lng:101.6869,name:"쿠알라룸푸르",country:"말레이시아",d:'h'},
+  {lat:6.9271,lng:79.8612,name:"콜롬보",country:"스리랑카",d:'h'},
+  {lat:23.8103,lng:90.4125,name:"다카",country:"방글라데시",d:'h'},
+  {lat:27.7172,lng:85.3240,name:"카트만두",country:"네팔",d:'h'},
+  {lat:33.6844,lng:73.0479,name:"이슬라마바드",country:"파키스탄",d:'h'},
+  {lat:43.2220,lng:76.8512,name:"알마티",country:"카자흐스탄",d:'h'},
+  {lat:41.2995,lng:69.2401,name:"타슈켄트",country:"우즈베키스탄",d:'h'},
+  {lat:47.8864,lng:106.9057,name:"울란바토르",country:"몽골",d:'h'},
+  {lat:35.6892,lng:51.3890,name:"테헤란",country:"이란",d:'h'},
+  {lat:24.7136,lng:46.6753,name:"리야드",country:"사우디아라비아",d:'h'},
+  {lat:25.2854,lng:51.5310,name:"도하",country:"카타르",d:'h'},
+  {lat:23.5880,lng:58.3829,name:"무스카트",country:"오만",d:'h'},
+  {lat:41.7151,lng:44.8271,name:"트빌리시",country:"조지아",d:'h'},
+  {lat:40.1792,lng:44.4991,name:"예레반",country:"아르메니아",d:'h'},
+  {lat:40.4093,lng:49.8671,name:"바쿠",country:"아제르바이잔",d:'h'},
+  /* ---------- 어려움 · 유럽 ---------- */
+  {lat:45.7640,lng:4.8357,name:"리옹",country:"프랑스",d:'h'},
+  {lat:43.2965,lng:5.3698,name:"마르세유",country:"프랑스",d:'h'},
+  {lat:43.6047,lng:1.4442,name:"툴루즈",country:"프랑스",d:'h'},
+  {lat:41.1579,lng:-8.6291,name:"포르투",country:"포르투갈",d:'h'},
+  {lat:38.7223,lng:-9.1393,name:"리스본",country:"포르투갈",d:'h'},
+  {lat:37.3891,lng:-5.9845,name:"세비야",country:"스페인",d:'h'},
+  {lat:39.4699,lng:-0.3763,name:"발렌시아",country:"스페인",d:'h'},
+  {lat:43.2630,lng:-2.9350,name:"빌바오",country:"스페인",d:'h'},
+  {lat:40.4168,lng:-3.7038,name:"마드리드",country:"스페인",d:'h'},
+  {lat:45.4642,lng:9.1900,name:"밀라노",country:"이탈리아",d:'h'},
+  {lat:40.8518,lng:14.2681,name:"나폴리",country:"이탈리아",d:'h'},
+  {lat:45.0703,lng:7.6869,name:"토리노",country:"이탈리아",d:'h'},
+  {lat:44.4949,lng:11.3426,name:"볼로냐",country:"이탈리아",d:'h'},
+  {lat:48.1351,lng:11.5820,name:"뮌헨",country:"독일",d:'h'},
+  {lat:53.5511,lng:9.9937,name:"함부르크",country:"독일",d:'h'},
+  {lat:50.9375,lng:6.9603,name:"쾰른",country:"독일",d:'h'},
+  {lat:50.1109,lng:8.6821,name:"프랑크푸르트",country:"독일",d:'h'},
+  {lat:47.3769,lng:8.5417,name:"취리히",country:"스위스",d:'h'},
+  {lat:59.9139,lng:10.7522,name:"오슬로",country:"노르웨이",d:'h'},
+  {lat:59.3293,lng:18.0686,name:"스톡홀름",country:"스웨덴",d:'h'},
+  {lat:60.1699,lng:24.9384,name:"헬싱키",country:"핀란드",d:'h'},
+  {lat:55.6761,lng:12.5683,name:"코펜하겐",country:"덴마크",d:'h'},
+  {lat:52.2297,lng:21.0122,name:"바르샤바",country:"폴란드",d:'h'},
+  {lat:50.0647,lng:19.9450,name:"크라쿠프",country:"폴란드",d:'h'},
+  {lat:44.4268,lng:26.1025,name:"부쿠레슈티",country:"루마니아",d:'h'},
+  {lat:42.6977,lng:23.3219,name:"소피아",country:"불가리아",d:'h'},
+  {lat:44.7866,lng:20.4489,name:"베오그라드",country:"세르비아",d:'h'},
+  {lat:45.8150,lng:15.9819,name:"자그레브",country:"크로아티아",d:'h'},
+  {lat:50.4501,lng:30.5234,name:"키이우",country:"우크라이나",d:'h'},
+  {lat:53.3498,lng:-6.2603,name:"더블린",country:"아일랜드",d:'h'},
+  {lat:55.9533,lng:-3.1883,name:"에든버러",country:"영국",d:'h'},
+  {lat:53.4808,lng:-2.2426,name:"맨체스터",country:"영국",d:'h'},
+  /* ---------- 어려움 · 아메리카 ---------- */
+  {lat:29.7604,lng:-95.3698,name:"휴스턴",country:"미국",d:'h'},
+  {lat:32.7767,lng:-96.7970,name:"댈러스",country:"미국",d:'h'},
+  {lat:39.7392,lng:-104.9903,name:"덴버",country:"미국",d:'h'},
+  {lat:47.6062,lng:-122.3321,name:"시애틀",country:"미국",d:'h'},
+  {lat:45.5152,lng:-122.6784,name:"포틀랜드",country:"미국",d:'h'},
+  {lat:44.9778,lng:-93.2650,name:"미니애폴리스",country:"미국",d:'h'},
+  {lat:33.7490,lng:-84.3880,name:"애틀랜타",country:"미국",d:'h'},
+  {lat:39.9526,lng:-75.1652,name:"필라델피아",country:"미국",d:'h'},
+  {lat:42.3601,lng:-71.0589,name:"보스턴",country:"미국",d:'h'},
+  {lat:41.8827,lng:-87.6233,name:"시카고",country:"미국",d:'h'},
+  {lat:45.5017,lng:-73.5673,name:"몬트리올",country:"캐나다",d:'h'},
+  {lat:43.6532,lng:-79.3832,name:"토론토",country:"캐나다",d:'h'},
+  {lat:49.2827,lng:-123.1207,name:"밴쿠버",country:"캐나다",d:'h'},
+  {lat:51.0447,lng:-114.0719,name:"캘거리",country:"캐나다",d:'h'},
+  {lat:20.6597,lng:-103.3496,name:"과달라하라",country:"멕시코",d:'h'},
+  {lat:25.6866,lng:-100.3161,name:"몬테레이",country:"멕시코",d:'h'},
+  {lat:23.1136,lng:-82.3666,name:"아바나",country:"쿠바",d:'h'},
+  {lat:4.7110,lng:-74.0721,name:"보고타",country:"콜롬비아",d:'h'},
+  {lat:6.2442,lng:-75.5812,name:"메데인",country:"콜롬비아",d:'h'},
+  {lat:-12.0464,lng:-77.0428,name:"리마",country:"페루",d:'h'},
+  {lat:-33.4489,lng:-70.6693,name:"산티아고",country:"칠레",d:'h'},
+  {lat:-33.0472,lng:-71.6127,name:"발파라이소",country:"칠레",d:'h'},
+  {lat:-34.9011,lng:-56.1645,name:"몬테비데오",country:"우루과이",d:'h'},
+  {lat:-23.5505,lng:-46.6333,name:"상파울루",country:"브라질",d:'h'},
+  {lat:-0.1807,lng:-78.4678,name:"키토",country:"에콰도르",d:'h'},
+  {lat:10.4806,lng:-66.9036,name:"카라카스",country:"베네수엘라",d:'h'},
+  /* ---------- 어려움 · 아프리카/오세아니아 ---------- */
+  {lat:6.5244,lng:3.3792,name:"라고스",country:"나이지리아",d:'h'},
+  {lat:9.0765,lng:7.3986,name:"아부자",country:"나이지리아",d:'h'},
+  {lat:5.6037,lng:-0.1870,name:"아크라",country:"가나",d:'h'},
+  {lat:14.7167,lng:-17.4677,name:"다카르",country:"세네갈",d:'h'},
+  {lat:9.0300,lng:38.7400,name:"아디스아바바",country:"에티오피아",d:'h'},
+  {lat:-1.2921,lng:36.8219,name:"나이로비",country:"케냐",d:'h'},
+  {lat:-6.7924,lng:39.2083,name:"다르에스살람",country:"탄자니아",d:'h'},
+  {lat:0.3476,lng:32.5825,name:"캄팔라",country:"우간다",d:'h'},
+  {lat:-8.8390,lng:13.2894,name:"루안다",country:"앙골라",d:'h'},
+  {lat:-26.2041,lng:28.0473,name:"요하네스버그",country:"남아공",d:'h'},
+  {lat:-29.8587,lng:31.0218,name:"더반",country:"남아공",d:'h'},
+  {lat:33.5731,lng:-7.5898,name:"카사블랑카",country:"모로코",d:'h'},
+  {lat:31.6295,lng:-7.9811,name:"마라케시",country:"모로코",d:'h'},
+  {lat:36.7538,lng:3.0588,name:"알제",country:"알제리",d:'h'},
+  {lat:36.8065,lng:10.1815,name:"튀니스",country:"튀니지",d:'h'},
+  {lat:15.5007,lng:32.5599,name:"하르툼",country:"수단",d:'h'},
+  {lat:-37.8136,lng:144.9631,name:"멜버른",country:"호주",d:'h'},
+  {lat:-27.4698,lng:153.0251,name:"브리즈번",country:"호주",d:'h'},
+  {lat:-31.9505,lng:115.8605,name:"퍼스",country:"호주",d:'h'},
+  {lat:-34.9285,lng:138.6007,name:"애들레이드",country:"호주",d:'h'},
+  {lat:-36.8485,lng:174.7633,name:"오클랜드",country:"뉴질랜드",d:'h'},
+  {lat:-41.2865,lng:174.7762,name:"웰링턴",country:"뉴질랜드",d:'h'},
+  {lat:-43.5321,lng:172.6362,name:"크라이스트처치",country:"뉴질랜드",d:'h'},
+  {lat:-18.1416,lng:178.4419,name:"수바",country:"피지",d:'h'},
+];
+
+const TOTAL_ROUNDS = 5;
+const MAX_PTS = 5000;
+
+/* ================= 상태 ================= */
+let rounds = [], curRound = 0, totalScore = 0, roundHistory = [];
+let lastGameNames = new Set(); // 직전 게임 출제 장소 (리플레이 중복 방지)
+let guessLatLng = null;
+let timerEnabled = false, timerSeconds = 60;
+let timerId = null, timeLeft = 0;
+let selectedDiff = 'e';   // 'e' 쉬움 | 'h' 어려움 | 'all' 혼합
+const DIFF_LABEL = {e:'쉬움', h:'어려움', all:'혼합'};
+
+/* ================= 지도 초기화 ================= */
+const satTiles = () => L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  {maxZoom:18, attribution:'Imagery © Esri'}
+);
+const mapTiles = () => L.tileLayer(
+  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+  {maxZoom:18, attribution:'© OpenStreetMap © CARTO', subdomains:'abcd'}
+);
+
+const mysteryMap = L.map('mystery-map', {
+  zoomControl:true, attributionControl:true,
+  doubleClickZoom:true, worldCopyJump:false
+});
+satTiles().addTo(mysteryMap);
+
+/* 문제 지점 복귀 버튼: 줌 컨트롤 바로 아래에 표시 */
+const recenterCtl = L.control({position:'topleft'});
+recenterCtl.onAdd = () => {
+  const btn = L.DomUtil.create('button', 'recenter-btn');
+  btn.type = 'button';
+  btn.title = '문제 지점으로 돌아가기';
+  btn.setAttribute('aria-label', '문제 지점으로 돌아가기');
+  btn.innerHTML = '⌖';
+  L.DomEvent.disableClickPropagation(btn);
+  btn.addEventListener('click', recenterMystery);
+  return btn;
+};
+recenterCtl.addTo(mysteryMap);
+
+function recenterMystery(){
+  const loc = rounds[curRound];
+  if(!loc) return;
+  mysteryMap.setView([loc.lat, loc.lng], 15);
+  // 조준선 펄스로 "여기가 문제 지점"임을 표시
+  const r = document.getElementById('reticle');
+  r.classList.remove('pulse');
+  void r.offsetWidth; // 애니메이션 재시작 트릭
+  r.classList.add('pulse');
+}
+
+const guessMap = L.map('guess-map', {
+  zoomControl:false, attributionControl:false, worldCopyJump:true
+}).setView([25,10],1);
+mapTiles().addTo(guessMap);
+
+const resultMap = L.map('result-map', {
+  zoomControl:true, attributionControl:true, worldCopyJump:true
+}).setView([25,10],2);
+mapTiles().addTo(resultMap);
+
+const pinIcon = c => L.divIcon({
+  className:'', iconSize:[26,36], iconAnchor:[13,34],
+  html:`<svg width="26" height="36" viewBox="0 0 26 36"><path d="M13 1C6.4 1 1 6.4 1 13c0 8.5 12 22 12 22s12-13.5 12-22C25 6.4 19.6 1 13 1z" fill="${c}" stroke="#0D1B26" stroke-width="1.5"/><circle cx="13" cy="13" r="4.5" fill="#0D1B26"/></svg>`
+});
+let guessMarker = null;
+
+/* 문제 지점 마커: 라운드 시작 위치에 고정 표시 */
+const questionIcon = L.divIcon({
+  className:'', iconSize:[38,38], iconAnchor:[19,19],
+  html:`<div class="q-marker"><svg width="38" height="38" viewBox="0 0 38 38" fill="none">
+    <circle class="qr" cx="19" cy="19" r="15" stroke="#F2C14E" stroke-width="1.5" stroke-dasharray="4 6"/>
+    <line x1="19" y1="8" x2="19" y2="13" stroke="#F2C14E" stroke-width="1.5"/>
+    <line x1="19" y1="25" x2="19" y2="30" stroke="#F2C14E" stroke-width="1.5"/>
+    <line x1="8" y1="19" x2="13" y2="19" stroke="#F2C14E" stroke-width="1.5"/>
+    <line x1="25" y1="19" x2="30" y2="19" stroke="#F2C14E" stroke-width="1.5"/>
+    <circle cx="19" cy="19" r="2.5" fill="#F2C14E" stroke="#0D1B26" stroke-width="1"/>
+  </svg></div>`
+});
+let questionMarker = null;
+
+/* ================= 유틸 ================= */
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString('ko-KR');
+
+function haversine(a, b){
+  const R = 6371, rad = x => x*Math.PI/180;
+  const dLat = rad(b.lat-a.lat), dLng = rad(b.lng-a.lng);
+  const h = Math.sin(dLat/2)**2 +
+            Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+const scoreFor = km => Math.round(MAX_PTS * Math.exp(-km/1500));
+
+function shuffle(arr){
+  const a = [...arr];
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+/* ================= 게임 흐름 ================= */
+function poolFor(diff){
+  return diff === 'all' ? LOCATIONS : LOCATIONS.filter(l => l.d === diff);
+}
+function startGame(){
+  let pool = poolFor(selectedDiff);
+  // 직전 게임에 나온 장소는 가능하면 제외
+  const fresh = pool.filter(l => !lastGameNames.has(l.name));
+  if(fresh.length >= TOTAL_ROUNDS) pool = fresh;
+  rounds = shuffle(pool).slice(0, TOTAL_ROUNDS);
+  lastGameNames = new Set(rounds.map(r => r.name));
+  curRound = 0; totalScore = 0; roundHistory = [];
+  timerEnabled = $('opt-timer').checked;
+  timerSeconds = Math.min(600, Math.max(10, parseInt($('opt-seconds').value, 10) || 60));
+  $('opt-seconds').value = timerSeconds;
+  $('hud-time-chip').classList.toggle('hidden', !timerEnabled);
+  $('hud-total-rounds').textContent = TOTAL_ROUNDS;
+  $('hud-score').textContent = '0';
+  $('hud-diff').textContent = DIFF_LABEL[selectedDiff];
+  $('screen-start').classList.add('hidden');
+  $('screen-final').classList.add('hidden');
+  $('hud').classList.remove('hidden');
+  showRound();
+}
+
+function showRound(){
+  const loc = rounds[curRound];
+  $('hud-round').textContent = curRound+1;
+  $('screen-result').classList.add('hidden');
+
+  // 미스터리 지도: 정답 주변만 탐색 가능 (어려운 곳은 더 좁게)
+  const hard = loc.d === 'h';
+  const pad = hard ? 0.04 : 0.06;
+  const bounds = L.latLngBounds(
+    [loc.lat-pad, loc.lng-pad], [loc.lat+pad, loc.lng+pad]
+  );
+  mysteryMap.setMaxBounds(null);
+  mysteryMap.setView([loc.lat, loc.lng], 15, {animate:false});
+  mysteryMap.setMaxBounds(bounds);
+  // 뷰포트가 경계보다 커지지 않는 최소 줌 계산 (경계 밖으로 튕기는 현상 방지)
+  const fitZoom = Math.ceil(mysteryMap.getBoundsZoom(bounds));
+  mysteryMap.setMinZoom(Math.min(15, Math.max(hard ? 14 : 13, fitZoom)));
+
+  // 문제 지점 고정 마커 갱신
+  if(questionMarker) mysteryMap.removeLayer(questionMarker);
+  questionMarker = L.marker([loc.lat, loc.lng], {
+    icon:questionIcon, interactive:false, keyboard:false
+  }).addTo(mysteryMap);
+  setTimeout(()=>mysteryMap.invalidateSize(), 60);
+
+  // 추측 지도 리셋
+  guessLatLng = null;
+  if(guessMarker){ guessMap.removeLayer(guessMarker); guessMarker = null; }
+  guessMap.setView([25,10],1);
+  $('guess-coord').textContent = '--.---- , --.----';
+  $('btn-guess').disabled = true;
+
+  const isMobile = window.matchMedia('(max-width:699px)').matches;
+  $('guess-panel').classList.remove('hidden','open');
+  $('toggle-guess').classList.toggle('hidden', !isMobile);
+  setTimeout(()=>guessMap.invalidateSize(), 250);
+
+  // 현장 사진: 패널은 접힌 상태로 시작, 백그라운드에서 로드
+  $('photo-panel').classList.add('hidden');
+  $('toggle-photos').classList.remove('hidden');
+  $('toggle-photos').innerHTML = '📷 현장 사진';
+  loadPhotos(loc);
+  startTimer();
+}
+
+/* ================= 라운드 타이머 =================
+   setInterval 감산이 아닌 마감 시각(timestamp) 기준으로 계산:
+   - 확인창(confirm)으로 JS가 멈춰도 실제 남은 시간이 유지됨
+   - 백그라운드 탭 스로틀링에도 시간이 정확함                  */
+let timerDeadline = 0;
+function stopTimer(){
+  if(timerId){ clearInterval(timerId); timerId = null; }
+}
+function startTimer(){
+  stopTimer();
+  if(!timerEnabled) return;
+  timerDeadline = Date.now() + timerSeconds*1000;
+  tickTimer();
+  timerId = setInterval(tickTimer, 250);
+}
+function tickTimer(){
+  timeLeft = Math.max(0, Math.ceil((timerDeadline - Date.now())/1000));
+  renderTime();
+  if(timeLeft <= 0){ stopTimer(); timeUp(); }
+}
+function renderTime(){
+  const el = $('hud-time');
+  el.textContent = timeLeft;
+  el.classList.toggle('warn', timeLeft <= 10);
+}
+
+/* ================= 현장 사진 (Wikimedia Commons) ================= */
+let photoToken = 0; // 라운드가 바뀌면 이전 응답 무시
+let roundPhotoPages = []; // 이번 라운드 사진의 출처 페이지 (결과 화면에 표기)
+// 정답 유출 가능성이 높은 파일 제외 (지도·도표·국기·문장·로고 등)
+const PHOTO_BLOCKLIST = /map|karte|carte|mapa|plan|locator|diagram|chart|flag|coat[_ ]of[_ ]arms|logo|emblem|seal|banner|sign[_ ]?board|panorama[_ ]?text/i;
+
+async function loadPhotos(loc){
+  const token = ++photoToken;
+  roundPhotoPages = [];
+  const strip = $('photo-strip');
+  strip.innerHTML = '<div class="photo-msg">사진 수신 중…</div>';
+  try{
+    const url = 'https://commons.wikimedia.org/w/api.php'
+      + '?action=query&format=json&origin=*'
+      + '&generator=geosearch'
+      + `&ggscoord=${loc.lat}%7C${loc.lng}`
+      + '&ggsradius=3000&ggslimit=24&ggsnamespace=6'
+      + '&prop=imageinfo&iiprop=url|mime&iiurlwidth=900';
+    const res = await fetch(url);
+    const data = await res.json();
+    if(token !== photoToken) return; // 이미 다음 라운드
+
+    const pages = data.query ? Object.values(data.query.pages) : [];
+    const photos = pages
+      .filter(p => p.imageinfo && p.imageinfo[0])
+      .filter(p => /image\/(jpeg|png)/.test(p.imageinfo[0].mime || ''))
+      .filter(p => !PHOTO_BLOCKLIST.test(p.title || ''))
+      .slice(0, 8)
+      .map(p => ({
+        thumb: p.imageinfo[0].thumburl || p.imageinfo[0].url,
+        full:  p.imageinfo[0].thumburl || p.imageinfo[0].url,
+        page:  p.imageinfo[0].descriptionurl
+      }));
+
+    if(photos.length === 0){
+      strip.innerHTML = '<div class="photo-msg">이 지역은 현장 사진이 없어요 — 위성 단서로 승부!</div>';
+      $('toggle-photos').innerHTML = '📷 현장 사진 <span class="cnt">0</span>';
+      return;
+    }
+    roundPhotoPages = photos.map(ph => ph.page).filter(Boolean);
+    strip.innerHTML = '';
+    photos.forEach(ph=>{
+      const img = document.createElement('img');
+      img.src = ph.thumb;
+      img.alt = '현장 사진'; // 파일명은 지명 유출 위험이 있어 표시하지 않음
+      img.loading = 'lazy';
+      img.addEventListener('click', ()=>openLightbox(ph));
+      img.addEventListener('error', ()=>img.remove());
+      strip.appendChild(img);
+    });
+    $('toggle-photos').innerHTML = `📷 현장 사진 <span class="cnt">${photos.length}</span>`;
+  }catch(err){
+    if(token !== photoToken) return;
+    strip.innerHTML = '<div class="photo-msg">사진을 불러오지 못했어요 (네트워크 확인)</div>';
+  }
+}
+
+function openLightbox(ph){
+  $('lightbox-img').src = ph.full;
+  $('lightbox').classList.remove('hidden');
+}
+$('lightbox').addEventListener('click', ()=>{
+  $('lightbox').classList.add('hidden');
+  $('lightbox-img').src = '';
+});
+$('toggle-photos').addEventListener('click', ()=>{
+  $('photo-panel').classList.remove('hidden');
+  $('toggle-photos').classList.add('hidden');
+});
+$('close-photos').addEventListener('click', ()=>{
+  $('photo-panel').classList.add('hidden');
+  $('toggle-photos').classList.remove('hidden');
+});
+
+guessMap.on('click', e=>{
+  guessLatLng = e.latlng;
+  if(!guessMarker){
+    guessMarker = L.marker(e.latlng, {icon:pinIcon('#FF5347')}).addTo(guessMap);
+  } else guessMarker.setLatLng(e.latlng);
+  $('guess-coord').textContent =
+    `${e.latlng.lat.toFixed(4)} , ${e.latlng.lng.toFixed(4)}`;
+  $('btn-guess').disabled = false;
+});
+
+/* 라운드 UI 정리 (추측 확정·시간 초과 공용) */
+function hideRoundUI(){
+  stopTimer();
+  $('guess-panel').classList.add('hidden');
+  $('toggle-guess').classList.add('hidden');
+  $('photo-panel').classList.add('hidden');
+  $('toggle-photos').classList.add('hidden');
+  $('lightbox').classList.add('hidden');
+}
+function renderCredits(){
+  $('res-credits').innerHTML = roundPhotoPages.length
+    ? '사진 출처(Wikimedia Commons): ' + roundPhotoPages
+        .map((u,i)=>`<a href="${u}" target="_blank" rel="noopener">[${i+1}]</a>`).join(' ')
+    : '';
+}
+
+let resultLayers = [];
+function confirmGuess(){
+  if(!guessLatLng) return;
+  const loc = rounds[curRound];
+  const answer = L.latLng(loc.lat, loc.lng);
+  // 경도 순환 보정: 더 가까운 세계 사본 기준으로 계산
+  let gl = guessLatLng.lng;
+  while(gl - loc.lng > 180) gl -= 360;
+  while(gl - loc.lng < -180) gl += 360;
+  const guess = L.latLng(guessLatLng.lat, gl);
+
+  const km = haversine(guess, answer);
+  const pts = scoreFor(km);
+  totalScore += pts;
+  roundHistory.push({name:loc.name, country:loc.country, km, pts});
+
+  // 결과 화면
+  hideRoundUI();
+  $('hud-score').textContent = fmt(totalScore);
+  $('screen-result').classList.remove('hidden');
+
+  resultLayers.forEach(l=>resultMap.removeLayer(l));
+  resultLayers = [
+    L.marker(answer,{icon:pinIcon('#F2C14E')}).addTo(resultMap)
+      .bindTooltip('정답',{permanent:true,direction:'top',offset:[0,-30]}),
+    L.marker(guess,{icon:pinIcon('#FF5347')}).addTo(resultMap)
+      .bindTooltip('내 추측',{permanent:true,direction:'top',offset:[0,-30]}),
+    L.polyline([guess,answer],{color:'#FF5347',weight:2,dashArray:'6 8'}).addTo(resultMap)
+  ];
+
+  $('res-name').textContent = loc.name;
+  $('res-country').textContent = loc.country + ` · ${loc.lat.toFixed(3)}, ${loc.lng.toFixed(3)}`;
+  renderCredits();
+  $('res-dist').textContent = km < 10 ? km.toFixed(1)+' km' : fmt(Math.round(km))+' km';
+  $('res-pts').textContent = '+'+fmt(pts);
+  $('btn-next').textContent = (curRound === TOTAL_ROUNDS-1) ? '최종 결과 보기' : '다음 라운드';
+
+  setTimeout(()=>{
+    resultMap.invalidateSize();
+    resultMap.fitBounds(L.latLngBounds([guess,answer]).pad(0.35));
+    $('res-bar').style.width = (pts/MAX_PTS*100)+'%';
+  }, 80);
+}
+
+/* 시간 초과: 0점 처리 후 결과 화면으로 */
+function timeUp(){
+  const loc = rounds[curRound];
+  const answer = L.latLng(loc.lat, loc.lng);
+  roundHistory.push({name:loc.name, country:loc.country, km:null, pts:0});
+
+  hideRoundUI();
+  $('hud-score').textContent = fmt(totalScore);
+  $('screen-result').classList.remove('hidden');
+
+  resultLayers.forEach(l=>resultMap.removeLayer(l));
+  resultLayers = [
+    L.marker(answer,{icon:pinIcon('#F2C14E')}).addTo(resultMap)
+      .bindTooltip('정답',{permanent:true,direction:'top',offset:[0,-30]})
+  ];
+
+  $('res-name').textContent = loc.name;
+  $('res-country').textContent = loc.country + ` · ${loc.lat.toFixed(3)}, ${loc.lng.toFixed(3)}`;
+  renderCredits();
+  $('res-dist').textContent = '⏱ 시간 초과';
+  $('res-pts').textContent = '+0';
+  $('btn-next').textContent = (curRound === TOTAL_ROUNDS-1) ? '최종 결과 보기' : '다음 라운드';
+
+  setTimeout(()=>{
+    resultMap.invalidateSize();
+    resultMap.setView(answer, 4);
+    $('res-bar').style.width = '0%';
+  }, 80);
+}
+
+function nextRound(){
+  $('res-bar').style.width = '0';
+  curRound++;
+  if(curRound >= TOTAL_ROUNDS) showFinal();
+  else showRound();
+}
+
+function rankOf(score){
+  const r = score / (TOTAL_ROUNDS*MAX_PTS);
+  if(r >= 0.9) return 'S · 지구를 정복한';
+  if(r >= 0.75) return 'A · 세계를 누빈';
+  if(r >= 0.55) return 'B · 해외도 가본';
+  if(r >= 0.35) return 'C · 국내는 익숙한';
+  return 'D · 동네만 아는';
+}
+
+/* ================= 기록 (localStorage, 사용 불가 환경에서는 조용히 생략) ================= */
+const REC_KEY = 'pepes-recon-records-v1';
+function loadRecords(){
+  try{ return JSON.parse(localStorage.getItem(REC_KEY)) || {}; }
+  catch(e){ return {}; }
+}
+function saveRecord(diff, score){
+  try{
+    const rec = loadRecords();
+    const r = rec[diff] || {best:0, recent:[]};
+    r.best = Math.max(r.best, score);
+    r.recent.unshift({s:score, t:timerEnabled ? timerSeconds : 0, d:Date.now()});
+    r.recent = r.recent.slice(0, 3);
+    rec[diff] = r;
+    localStorage.setItem(REC_KEY, JSON.stringify(rec));
+  }catch(e){ /* 사생활 보호 모드 등 저장 불가 환경 */ }
+  renderRecords();
+}
+/* 기록 날짜 표기: 올해 기록은 "07.14 21:05", 지난해 이전은 연도 포함 */
+function fmtDate(ts){
+  if(!ts) return '이전 기록';
+  const d = new Date(ts), now = new Date();
+  const p = n => String(n).padStart(2, '0');
+  const ymd = (d.getFullYear() !== now.getFullYear() ? d.getFullYear() + '.' : '')
+    + p(d.getMonth()+1) + '.' + p(d.getDate());
+  return `${ymd} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+/* 마지막으로 사용한 난이도/타이머 설정 기억 (기록과 별도 키로 저장) */
+const PREF_KEY = 'pepes-recon-prefs-v1';
+function loadPrefs(){
+  try{ return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; }
+  catch(e){ return {}; }
+}
+function savePrefs(){
+  try{
+    localStorage.setItem(PREF_KEY, JSON.stringify({
+      diff: selectedDiff,
+      timerEnabled: $('opt-timer').checked,
+      timerSeconds: parseInt($('opt-seconds').value, 10) || 60
+    }));
+  }catch(e){ /* 저장 불가 환경은 조용히 무시 */ }
+}
+function applyPrefs(){
+  const p = loadPrefs();
+  if(p.diff && DIFF_LABEL[p.diff]){
+    selectedDiff = p.diff;
+    document.querySelectorAll('.diff-btn').forEach(b=>{
+      const sel = b.dataset.diff === selectedDiff;
+      b.classList.toggle('selected', sel);
+      b.setAttribute('aria-checked', sel ? 'true' : 'false');
+    });
+  }
+  if(typeof p.timerEnabled === 'boolean'){
+    $('opt-timer').checked = p.timerEnabled;
+    $('opt-seconds').disabled = !p.timerEnabled;
+  }
+  if(p.timerSeconds) $('opt-seconds').value = p.timerSeconds;
+}
+
+function renderRecords(){
+  const el = $('records');
+  const r = loadRecords()[selectedDiff];
+  if(!r || !r.recent.length){
+    el.innerHTML = `<div class="rec-empty">${DIFF_LABEL[selectedDiff]} 모드 · 아직 기록이 없어요</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="rec-best">
+      <span class="rec-lbl">BEST · ${DIFF_LABEL[selectedDiff]}</span>
+      <b class="mono">${fmt(r.best)}점</b>
+    </div>
+    ${r.recent.map(x=>`
+      <div class="rec-row">
+        <span class="rec-idx mono">${fmtDate(x.d)}</span>
+        <span class="mono">${fmt(x.s)}점${x.t ? `<span class="tmr">⏱${x.t}초</span>` : ''}</span>
+      </div>`).join('')}`;
+}
+
+function showFinal(){
+  $('screen-result').classList.add('hidden');
+  $('hud').classList.add('hidden');
+  $('final-total').textContent = fmt(totalScore);
+  $('final-diff').textContent = DIFF_LABEL[selectedDiff]
+    + (timerEnabled ? ` · ⏱${timerSeconds}초` : '');
+  $('final-rank').textContent = rankOf(totalScore);
+  $('final-rounds').innerHTML = roundHistory.map((h,i)=>`
+    <div class="row">
+      <span>R${i+1} · ${h.name}</span>
+      <span><span class="dist mono">${h.km==null ? '시간초과' : (h.km<10 ? h.km.toFixed(1) : fmt(Math.round(h.km)))+' km'}</span>
+      &nbsp;<span class="pt mono">+${fmt(h.pts)}</span></span>
+    </div>`).join('');
+  const prevBest = (loadRecords()[selectedDiff] || {best:0}).best;
+  $('final-newbest').classList.toggle('hidden', !(totalScore > prevBest));
+  saveRecord(selectedDiff, totalScore);
+  $('screen-final').classList.remove('hidden');
+}
+
+/* ================= 이벤트 ================= */
+$('btn-start').addEventListener('click', startGame);
+$('btn-guess').addEventListener('click', confirmGuess);
+$('btn-next').addEventListener('click', nextRound);
+$('btn-replay').addEventListener('click', startGame);
+$('btn-quit').addEventListener('click', quitGame);
+$('btn-change-diff').addEventListener('click', ()=>{
+  $('screen-final').classList.add('hidden');
+  $('screen-start').classList.remove('hidden');
+});
+document.querySelectorAll('.diff-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.diff-btn').forEach(b=>{
+      b.classList.remove('selected');
+      b.setAttribute('aria-checked','false');
+    });
+    btn.classList.add('selected');
+    btn.setAttribute('aria-checked','true');
+    selectedDiff = btn.dataset.diff;
+    renderRecords();
+    savePrefs();
+  });
+});
+$('opt-timer').addEventListener('change', e=>{
+  $('opt-seconds').disabled = !e.target.checked;
+  savePrefs();
+});
+$('opt-seconds').addEventListener('change', savePrefs);
+
+/* 중도 종료: 진행 상황을 버리고 홈 화면으로 */
+function quitGame(){
+  if(!confirm('게임을 종료하고 홈으로 돌아갈까요?\n현재 진행 상황은 사라집니다.')) return;
+  stopTimer();
+  photoToken++; // 진행 중이던 사진 응답 무시
+  ['hud','screen-result','guess-panel','toggle-guess','photo-panel','toggle-photos','lightbox']
+    .forEach(id=>$(id).classList.add('hidden'));
+  $('guess-panel').classList.remove('open');
+  $('lightbox-img').src = '';
+  $('res-bar').style.width = '0';
+  $('screen-start').classList.remove('hidden');
+}
+
+/* 결과 이미지: 클립보드 복사 + (모바일) 공유 시트 / (데스크톱) PNG 다운로드 */
+async function shareImage(){
+  const btn = $('btn-share');
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '이미지 생성 중…';
+  try{
+    const canvasPromise = html2canvas($('final-share-area'), {
+      backgroundColor:'#13293A', scale:2
+    });
+    const blobPromise = canvasPromise.then(
+      c => new Promise(res => c.toBlob(res, 'image/png'))
+    );
+
+    // 1) 클립보드 복사 시도
+    //    Safari: ClipboardItem에 Promise를 넘겨야 사용자 제스처로 인정됨
+    //    구형 Chrome: Promise 미지원 → Blob으로 재시도
+    let copied = false;
+    if(navigator.clipboard && window.ClipboardItem){
+      try{
+        await navigator.clipboard.write([new ClipboardItem({'image/png': blobPromise})]);
+        copied = true;
+      }catch(e1){
+        try{
+          const b = await blobPromise;
+          await navigator.clipboard.write([new ClipboardItem({'image/png': b})]);
+          copied = true;
+        }catch(e2){ /* 복사 미지원/권한 거부 → 저장으로만 진행 */ }
+      }
+    }
+
+    // 2) 저장/공유
+    const blob = await blobPromise;
+    const file = new File([blob], 'pepes-recon-result.png', {type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:"Pepe's Recon Game"});
+      btn.textContent = copied ? '✓ 복사·공유 완료' : '✓ 공유 완료';
+    }else{
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'pepes-recon-result.png';
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+      btn.textContent = copied ? '✓ 복사·저장 완료' : '✓ 저장 완료 (복사 미지원)';
+    }
+  }catch(e){
+    if(e && e.name === 'AbortError'){ // 공유 시트에서 사용자가 취소
+      btn.textContent = orig; btn.disabled = false; return;
+    }
+    btn.textContent = '실패 — 다시 시도';
+  }
+  setTimeout(()=>{ btn.textContent = orig; btn.disabled = false; }, 2200);
+}
+$('btn-share').addEventListener('click', shareImage);
+
+/* Esc: 라이트박스 닫기 */
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Escape' && !$('lightbox').classList.contains('hidden')){
+    $('lightbox').classList.add('hidden');
+    $('lightbox-img').src = '';
+  }
+});
+$('pool-count').textContent = LOCATIONS.length;
+applyPrefs();
+renderRecords();
+$('toggle-guess').addEventListener('click', ()=>{
+  const p = $('guess-panel');
+  p.classList.toggle('open');
+  setTimeout(()=>guessMap.invalidateSize(), 220);
+});
+
+/* 시작 화면 좌표 티커 */
+const ticker = $('ticker');
+setInterval(()=>{
+  const la = (Math.random()*160-80).toFixed(4);
+  const ln = (Math.random()*360-180).toFixed(4);
+  ticker.textContent = `${Math.abs(la)}°${la>=0?'N':'S'} , ${Math.abs(ln)}°${ln>=0?'E':'W'}`;
+}, 1400);
+
+window.addEventListener('resize', ()=>{
+  mysteryMap.invalidateSize(); guessMap.invalidateSize(); resultMap.invalidateSize();
+  // 라운드 진행 중 화면 폭이 모바일↔데스크톱 경계를 넘나들면 위치 찍기 버튼 표시 갱신
+  const inRound = !$('hud').classList.contains('hidden') && $('screen-result').classList.contains('hidden');
+  if(inRound){
+    const isMobile = window.matchMedia('(max-width:699px)').matches;
+    $('toggle-guess').classList.toggle('hidden', !isMobile);
+  }
+});
+</script>
+</body>
+</html>

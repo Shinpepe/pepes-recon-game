@@ -476,7 +476,7 @@
     </div>
     <button id="btn-share" class="btn-ghost" style="width:100%;margin-bottom:10px">📸 결과 이미지 저장</button>
     <button id="btn-replay" class="btn-primary">같은 난이도로 다시</button>
-    <button id="btn-change-diff" class="btn-ghost" style="width:100%;margin-top:10px">처음으로 돌아가기</button>
+    <button id="btn-change-diff" class="btn-ghost" style="width:100%;margin-top:10px">난이도 변경</button>
   </div>
 </div>
 
@@ -931,10 +931,26 @@ let photoToken = 0; // 라운드가 바뀌면 이전 응답 무시
 let roundPhotoPages = []; // 이번 라운드 사진의 출처 페이지 (결과 화면에 표기)
 // 정답 유출 가능성이 높은 파일 제외 (지도·도표·국기·문장·로고 등)
 const PHOTO_BLOCKLIST = /map|karte|carte|mapa|plan|locator|diagram|chart|flag|coat[_ ]of[_ ]arms|logo|emblem|seal|banner|sign[_ ]?board|panorama[_ ]?text/i;
+// 라운드마다 새로 만든 blob URL들 — 다음 라운드로 넘어갈 때 해제(revoke)해서 메모리 정리
+let photoObjectUrls = [];
+/* 위키미디어 원본 URL을 그대로 <img src>에 쓰면, 우클릭 → 새 탭에서 열기로
+   파일명(지명이 포함된 경우가 많음)이 노출될 수 있음.
+   fetch로 받아서 blob URL로 바꿔치기하면 실제 파일명이 어디에도 남지 않음. */
+async function toObjectURL(url){
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('fetch failed');
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
+  photoObjectUrls.push(objUrl);
+  return objUrl;
+}
 
 async function loadPhotos(loc){
   const token = ++photoToken;
   roundPhotoPages = [];
+  // 이전 라운드에서 만든 blob URL 정리
+  photoObjectUrls.forEach(u => URL.revokeObjectURL(u));
+  photoObjectUrls = [];
   const strip = $('photo-strip');
   strip.innerHTML = '<div class="photo-msg">사진 수신 중…</div>';
   try{
@@ -967,16 +983,26 @@ async function loadPhotos(loc){
     }
     roundPhotoPages = photos.map(ph => ph.page).filter(Boolean);
     strip.innerHTML = '';
-    photos.forEach(ph=>{
+    $('toggle-photos').innerHTML = `📷 현장 사진 <span class="cnt">${photos.length}</span>`;
+    photos.forEach(async ph=>{
+      // 원본 URL을 blob URL로 바꿔서, 우클릭으로 열어도 파일명이 보이지 않게 함
+      try{
+        const objUrl = await toObjectURL(ph.thumb);
+        if(token !== photoToken) return; // 변환 도중 라운드가 바뀌었으면 무시
+        ph.thumb = objUrl; ph.full = objUrl;
+      }catch(e){
+        if(token !== photoToken) return;
+        // CORS 등으로 변환 실패 시에도 사진 자체는 보이도록 원본 URL로 대체
+      }
       const img = document.createElement('img');
       img.src = ph.thumb;
       img.alt = '현장 사진'; // 파일명은 지명 유출 위험이 있어 표시하지 않음
+      img.draggable = false; // 드래그로 blob 정보 노출 방지
       img.loading = 'lazy';
       img.addEventListener('click', ()=>openLightbox(ph));
       img.addEventListener('error', ()=>img.remove());
       strip.appendChild(img);
     });
-    $('toggle-photos').innerHTML = `📷 현장 사진 <span class="cnt">${photos.length}</span>`;
   }catch(err){
     if(token !== photoToken) return;
     strip.innerHTML = '<div class="photo-msg">사진을 불러오지 못했어요 (네트워크 확인)</div>';
@@ -1307,6 +1333,8 @@ function quitGame(){
   if(!confirm('게임을 종료하고 홈으로 돌아갈까요?\n현재 진행 상황은 사라집니다.')) return;
   stopTimer();
   photoToken++; // 진행 중이던 사진 응답 무시
+  photoObjectUrls.forEach(u => URL.revokeObjectURL(u));
+  photoObjectUrls = [];
   ['hud','screen-result','guess-panel','toggle-guess','photo-panel','toggle-photos','lightbox']
     .forEach(id=>$(id).classList.add('hidden'));
   $('guess-panel').classList.remove('open');

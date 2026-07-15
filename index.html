@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Pepe's Recon Game</title>
 <meta name="description" content="사진만 보고 지구 어딘가를 찾아내는 게임. 데일리 챌린지와 친구 도전 링크로 경쟁해 보세요.">
 <meta property="og:title" content="Pepe's Recon Game">
@@ -26,7 +26,7 @@
     --radius:10px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%}
+  html,body{height:100%;touch-action:pan-x pan-y} /* 페이지 핀치줌 차단 (고정 레이아웃 보호) */
   body{
     font-family:"IBM Plex Sans KR",system-ui,sans-serif;
     background:var(--ink);color:var(--paper);
@@ -279,8 +279,21 @@
     position:fixed;inset:0;z-index:60;background:rgba(6,14,20,.92);
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:10px;cursor:zoom-out;
+    touch-action:none;              /* 브라우저 제스처 대신 자체 핀치줌 사용 */
+    -webkit-user-select:none;user-select:none;
+    overflow:hidden;
   }
-  #lightbox img{max-width:92vw;max-height:82vh;border-radius:8px;border:1px solid var(--line)}
+  #lightbox img{
+    max-width:92vw;max-height:82vh;border-radius:8px;border:1px solid var(--line);
+    will-change:transform;
+  }
+  .lb-close{
+    position:absolute;top:14px;right:14px;z-index:2;
+    width:38px;height:38px;border-radius:50%;font-size:16px;line-height:1;padding:0;
+    background:rgba(13,27,38,.88);color:var(--paper);border:1px solid var(--line);
+  }
+  .lb-close:hover{border-color:var(--gold);color:var(--gold)}
+  .lb-hint{position:absolute;bottom:14px;font-size:10px;color:var(--dim);letter-spacing:.06em}
   #lightbox-credit{font-size:11px;color:var(--dim);letter-spacing:.08em}
   @media (max-width:699px){
     #toggle-photos{bottom:76px}
@@ -377,6 +390,20 @@
   .stat-row span{color:var(--dim)}
   .stat-row b{color:var(--paper)}
 
+  /* 최종 화면: 스트릭·순위·리캡 지도 */
+  .final-streak{margin-top:10px;color:var(--gold);font-weight:700;font-size:14px}
+  .final-myrank{margin-top:6px;font-size:12px;color:var(--dim);letter-spacing:.04em}
+  .recap-lbl{font-size:10px;letter-spacing:.2em;color:var(--dim);text-align:left;margin:2px 0 6px}
+  #recap-map{
+    height:170px;border:1px solid var(--line);border-radius:10px;
+    margin-bottom:14px;background:#0A1822;overflow:hidden;
+  }
+  .rc-a{
+    width:20px;height:20px;border-radius:50%;background:var(--gold);color:#0D1B26;
+    font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;
+    border:2px solid #0D1B26;font-family:"IBM Plex Mono",monospace;
+  }
+
   .leaflet-container{font-family:"IBM Plex Sans KR",sans-serif}
 </style>
 </head>
@@ -433,8 +460,10 @@
   <div id="photo-strip"><div class="photo-msg">사진 수신 중…</div></div>
 </div>
 <div id="lightbox" class="hidden">
-  <img id="lightbox-img" alt="현장 사진">
+  <button id="lightbox-close" class="lb-close" aria-label="사진 닫기">✕</button>
+  <img id="lightbox-img" alt="현장 사진" draggable="false">
   <div id="lightbox-credit" class="mono">© Wikimedia Commons</div>
+  <div class="lb-hint mono">더블탭·핀치로 확대 / 배경을 누르면 닫힘</div>
 </div>
 
 <!-- 추측 패널 -->
@@ -496,6 +525,7 @@
     </div>
     <div class="records" id="records"></div>
     <div class="side-note hidden mono" id="seed-note"></div>
+    <div class="side-note hidden mono" id="streak-note" style="color:var(--paper)"></div>
     <button id="btn-start" class="btn-primary">게임 시작</button>
     <button id="btn-stats" class="btn-ghost" style="width:100%;margin-top:10px">📊 내 통계</button>
     <div class="made-by mono">© made by shinhyunsu</div>
@@ -537,9 +567,14 @@
       <div class="newbest hidden" id="final-newbest">🏆 내 최고 기록 갱신!</div>
       <div class="newbest hidden" id="final-practice" style="color:var(--dim);font-weight:500">연습 플레이 — 랭킹에는 반영되지 않아요</div>
       <div class="challenge-vs hidden" id="final-challenge-line"></div>
+      <div class="final-streak hidden" id="final-streak"></div>
+      <div class="final-myrank hidden mono" id="final-myrank"></div>
       <div class="final-rounds" id="final-rounds"></div>
       <div class="share-brand mono">PEPE'S // RECON GAME</div>
     </div>
+    <div class="recap-lbl mono">ROUND RECAP</div>
+    <div id="recap-map"></div>
+    <button id="btn-copy-text" class="btn-ghost" style="width:100%;margin-bottom:10px">📋 결과 텍스트 복사</button>
     <button id="btn-challenge-link" class="btn-ghost" style="width:100%;margin-bottom:10px">🔗 도전장 보내기 (이 코스로 대결)</button>
     <button id="btn-share" class="btn-ghost" style="width:100%;margin-bottom:10px">📸 결과 이미지 저장</button>
     <button id="btn-replay" class="btn-primary">같은 난이도로 다시</button>
@@ -798,6 +833,160 @@ const LOCATIONS = [
   {lat:-41.2865,lng:174.7762,name:"웰링턴",country:"뉴질랜드",d:'h'},
   {lat:-43.5321,lng:172.6362,name:"크라이스트처치",country:"뉴질랜드",d:'h'},
   {lat:-18.1416,lng:178.4419,name:"수바",country:"피지",d:'h'},
+
+  /* ========== 2차 확장 (⚠ 반드시 배열 끝에만 추가 — 순서 변경 시 시드 코스가 전부 바뀜) ========== */
+  /* ---------- 확장 · 쉬움 ---------- */
+  {lat:37.5110,lng:127.0995,name:"서울 잠실 석촌호수",country:"대한민국",d:'e'},
+  {lat:35.1532,lng:129.1187,name:"부산 광안리·광안대교",country:"대한민국",d:'e'},
+  {lat:37.3897,lng:126.6398,name:"인천 송도국제도시",country:"대한민국",d:'e'},
+  {lat:33.3617,lng:126.5292,name:"한라산 백록담",country:"대한민국",d:'e'},
+  {lat:37.5133,lng:126.9969,name:"서울 반포대교·한강",country:"대한민국",d:'e'},
+  {lat:40.3540,lng:116.0040,name:"만리장성 바다링",country:"중국",d:'e'},
+  {lat:39.9915,lng:116.3903,name:"베이징 올림픽공원",country:"중국",d:'e'},
+  {lat:22.1987,lng:113.5439,name:"마카오",country:"마카오",d:'e'},
+  {lat:20.9101,lng:107.0448,name:"하롱베이",country:"베트남",d:'e'},
+  {lat:11.9674,lng:121.9248,name:"보라카이",country:"필리핀",d:'e'},
+  {lat:22.3080,lng:113.9185,name:"홍콩국제공항",country:"홍콩",d:'e'},
+  {lat:27.9881,lng:86.9250,name:"에베레스트",country:"네팔/중국",d:'e'},
+  {lat:28.6129,lng:77.2295,name:"델리 인디아게이트",country:"인도",d:'e'},
+  {lat:21.4225,lng:39.8262,name:"메카 대모스크",country:"사우디아라비아",d:'e'},
+  {lat:24.4128,lng:54.4750,name:"셰이크 자이드 모스크",country:"아랍에미리트",d:'e'},
+  {lat:47.5576,lng:10.7498,name:"노이슈반슈타인성",country:"독일",d:'e'},
+  {lat:51.1789,lng:-1.8262,name:"스톤헨지",country:"영국",d:'e'},
+  {lat:48.8049,lng:2.1204,name:"베르사유 궁전",country:"프랑스",d:'e'},
+  {lat:43.6952,lng:7.2656,name:"니스 해변",country:"프랑스",d:'e'},
+  {lat:51.2093,lng:3.2247,name:"브뤼헤 운하지구",country:"벨기에",d:'e'},
+  {lat:35.8989,lng:14.5146,name:"몰타 발레타",country:"몰타",d:'e'},
+  {lat:43.9424,lng:12.4578,name:"산마리노",country:"산마리노",d:'e'},
+  {lat:43.7396,lng:7.4272,name:"모나코 몬테카를로",country:"모나코",d:'e'},
+  {lat:45.9763,lng:7.6586,name:"마터호른",country:"스위스/이탈리아",d:'e'},
+  {lat:44.8654,lng:15.5820,name:"플리트비체 호수",country:"크로아티아",d:'e'},
+  {lat:37.1761,lng:-3.5881,name:"그라나다 알람브라",country:"스페인",d:'e'},
+  {lat:62.1049,lng:7.2058,name:"게이랑에르 피오르",country:"노르웨이",d:'e'},
+  {lat:48.1858,lng:16.3122,name:"빈 쇤브룬 궁전",country:"오스트리아",d:'e'},
+  {lat:36.0161,lng:-114.7377,name:"후버댐",country:"미국",d:'e'},
+  {lat:44.5251,lng:-110.8382,name:"옐로스톤 그랜드프리즈매틱",country:"미국",d:'e'},
+  {lat:37.7280,lng:-119.5730,name:"요세미티 밸리",country:"미국",d:'e'},
+  {lat:38.6247,lng:-90.1848,name:"세인트루이스 게이트웨이 아치",country:"미국",d:'e'},
+  {lat:19.6925,lng:-98.8438,name:"테오티우아칸",country:"멕시코",d:'e'},
+  {lat:-14.7390,lng:-75.1300,name:"나스카 지상화",country:"페루",d:'e'},
+  {lat:-22.9519,lng:-43.2105,name:"리우 코르코바두 예수상",country:"브라질",d:'e'},
+  {lat:30.4550,lng:32.3500,name:"수에즈 운하",country:"이집트",d:'e'},
+  {lat:25.7188,lng:32.6573,name:"룩소르 카르나크 신전",country:"이집트",d:'e'},
+  {lat:-44.6717,lng:167.9250,name:"밀퍼드사운드",country:"뉴질랜드",d:'e'},
+  /* ---------- 확장 · 어려움 · 한국 ---------- */
+  {lat:37.2636,lng:127.0286,name:"수원",country:"대한민국",d:'h'},
+  {lat:35.2280,lng:128.6811,name:"창원",country:"대한민국",d:'h'},
+  {lat:36.6424,lng:127.4890,name:"청주",country:"대한민국",d:'h'},
+  {lat:36.8151,lng:127.1139,name:"천안",country:"대한민국",d:'h'},
+  {lat:34.8118,lng:126.3922,name:"목포",country:"대한민국",d:'h'},
+  {lat:35.1800,lng:128.1076,name:"진주",country:"대한민국",d:'h'},
+  {lat:36.5684,lng:128.7294,name:"안동",country:"대한민국",d:'h'},
+  {lat:37.3422,lng:127.9202,name:"원주",country:"대한민국",d:'h'},
+  /* ---------- 확장 · 어려움 · 아시아 ---------- */
+  {lat:34.6551,lng:133.9195,name:"오카야마",country:"일본",d:'h'},
+  {lat:37.9161,lng:139.0364,name:"니가타",country:"일본",d:'h'},
+  {lat:32.8032,lng:130.7079,name:"구마모토",country:"일본",d:'h'},
+  {lat:31.5966,lng:130.5571,name:"가고시마",country:"일본",d:'h'},
+  {lat:33.8392,lng:132.7657,name:"마쓰야마",country:"일본",d:'h'},
+  {lat:34.9756,lng:138.3828,name:"시즈오카",country:"일본",d:'h'},
+  {lat:30.5928,lng:114.3055,name:"우한",country:"중국",d:'h'},
+  {lat:30.2741,lng:120.1551,name:"항저우",country:"중국",d:'h'},
+  {lat:32.0603,lng:118.7969,name:"난징",country:"중국",d:'h'},
+  {lat:36.0671,lng:120.3826,name:"칭다오",country:"중국",d:'h'},
+  {lat:38.9140,lng:121.6147,name:"다롄",country:"중국",d:'h'},
+  {lat:25.0389,lng:102.7183,name:"쿤밍",country:"중국",d:'h'},
+  {lat:43.8256,lng:87.6168,name:"우루무치",country:"중국",d:'h'},
+  {lat:-7.2575,lng:112.7521,name:"수라바야",country:"인도네시아",d:'h'},
+  {lat:-6.9175,lng:107.6191,name:"반둥",country:"인도네시아",d:'h'},
+  {lat:18.7883,lng:98.9853,name:"치앙마이",country:"태국",d:'h'},
+  {lat:7.8804,lng:98.3923,name:"푸켓타운",country:"태국",d:'h'},
+  {lat:7.1907,lng:125.4553,name:"다바오",country:"필리핀",d:'h'},
+  {lat:12.2388,lng:109.1967,name:"나트랑",country:"베트남",d:'h'},
+  {lat:31.5204,lng:74.3587,name:"라호르",country:"파키스탄",d:'h'},
+  {lat:24.8607,lng:67.0011,name:"카라치",country:"파키스탄",d:'h'},
+  {lat:13.0827,lng:80.2707,name:"첸나이",country:"인도",d:'h'},
+  {lat:12.9716,lng:77.5946,name:"벵갈루루",country:"인도",d:'h'},
+  {lat:17.3850,lng:78.4867,name:"하이데라바드",country:"인도",d:'h'},
+  {lat:22.5726,lng:88.3639,name:"콜카타",country:"인도",d:'h'},
+  {lat:42.8746,lng:74.5698,name:"비슈케크",country:"키르기스스탄",d:'h'},
+  {lat:38.5598,lng:68.7870,name:"두샨베",country:"타지키스탄",d:'h'},
+  {lat:29.3759,lng:47.9774,name:"쿠웨이트시티",country:"쿠웨이트",d:'h'},
+  {lat:26.2285,lng:50.5860,name:"마나마",country:"바레인",d:'h'},
+  {lat:31.9454,lng:35.9284,name:"암만",country:"요르단",d:'h'},
+  {lat:33.8938,lng:35.5018,name:"베이루트",country:"레바논",d:'h'},
+  {lat:36.8969,lng:30.7133,name:"안탈리아",country:"튀르키예",d:'h'},
+  {lat:39.9334,lng:32.8597,name:"앙카라",country:"튀르키예",d:'h'},
+  /* ---------- 확장 · 어려움 · 유럽 ---------- */
+  {lat:47.2184,lng:-1.5536,name:"낭트",country:"프랑스",d:'h'},
+  {lat:48.5734,lng:7.7521,name:"스트라스부르",country:"프랑스",d:'h'},
+  {lat:50.6292,lng:3.0573,name:"릴",country:"프랑스",d:'h'},
+  {lat:51.3397,lng:12.3731,name:"라이프치히",country:"독일",d:'h'},
+  {lat:48.7758,lng:9.1829,name:"슈투트가르트",country:"독일",d:'h'},
+  {lat:51.2277,lng:6.7735,name:"뒤셀도르프",country:"독일",d:'h'},
+  {lat:54.3520,lng:18.6466,name:"그단스크",country:"폴란드",d:'h'},
+  {lat:51.1079,lng:17.0385,name:"브로츠와프",country:"폴란드",d:'h'},
+  {lat:41.3275,lng:19.8187,name:"티라나",country:"알바니아",d:'h'},
+  {lat:41.9973,lng:21.4280,name:"스코페",country:"북마케도니아",d:'h'},
+  {lat:43.8563,lng:18.4131,name:"사라예보",country:"보스니아 헤르체고비나",d:'h'},
+  {lat:46.0569,lng:14.5058,name:"류블랴나",country:"슬로베니아",d:'h'},
+  {lat:48.1486,lng:17.1077,name:"브라티슬라바",country:"슬로바키아",d:'h'},
+  {lat:54.6872,lng:25.2797,name:"빌뉴스",country:"리투아니아",d:'h'},
+  {lat:56.9496,lng:24.1052,name:"리가",country:"라트비아",d:'h'},
+  {lat:59.4370,lng:24.7536,name:"탈린",country:"에스토니아",d:'h'},
+  {lat:57.7089,lng:11.9746,name:"예테보리",country:"스웨덴",d:'h'},
+  {lat:60.3913,lng:5.3221,name:"베르겐",country:"노르웨이",d:'h'},
+  {lat:56.1629,lng:10.2039,name:"오르후스",country:"덴마크",d:'h'},
+  {lat:55.8642,lng:-4.2518,name:"글래스고",country:"영국",d:'h'},
+  {lat:52.4862,lng:-1.8904,name:"버밍엄",country:"영국",d:'h'},
+  {lat:53.4084,lng:-2.9916,name:"리버풀",country:"영국",d:'h'},
+  {lat:38.1157,lng:13.3615,name:"팔레르모",country:"이탈리아",d:'h'},
+  {lat:44.4056,lng:8.9463,name:"제노바",country:"이탈리아",d:'h'},
+  {lat:47.8095,lng:13.0550,name:"잘츠부르크",country:"오스트리아",d:'h'},
+  /* ---------- 확장 · 어려움 · 아메리카 ---------- */
+  {lat:38.5816,lng:-121.4944,name:"새크라멘토",country:"미국",d:'h'},
+  {lat:29.4241,lng:-98.4936,name:"샌안토니오",country:"미국",d:'h'},
+  {lat:33.4484,lng:-112.0740,name:"피닉스",country:"미국",d:'h'},
+  {lat:39.0997,lng:-94.5786,name:"캔자스시티",country:"미국",d:'h'},
+  {lat:36.1627,lng:-86.7816,name:"내슈빌",country:"미국",d:'h'},
+  {lat:35.2271,lng:-80.8431,name:"샬럿",country:"미국",d:'h'},
+  {lat:30.2672,lng:-97.7431,name:"오스틴",country:"미국",d:'h'},
+  {lat:45.4215,lng:-75.6972,name:"오타와",country:"캐나다",d:'h'},
+  {lat:49.8951,lng:-97.1384,name:"위니펙",country:"캐나다",d:'h'},
+  {lat:53.5461,lng:-113.4938,name:"에드먼턴",country:"캐나다",d:'h'},
+  {lat:32.5149,lng:-117.0382,name:"티후아나",country:"멕시코",d:'h'},
+  {lat:19.0414,lng:-98.2063,name:"푸에블라",country:"멕시코",d:'h'},
+  {lat:9.9281,lng:-84.0907,name:"산호세",country:"코스타리카",d:'h'},
+  {lat:14.6349,lng:-90.5069,name:"과테말라시티",country:"과테말라",d:'h'},
+  {lat:13.6929,lng:-89.2182,name:"산살바도르",country:"엘살바도르",d:'h'},
+  {lat:12.1150,lng:-86.2362,name:"마나과",country:"니카라과",d:'h'},
+  {lat:-31.4201,lng:-64.1888,name:"코르도바",country:"아르헨티나",d:'h'},
+  {lat:-32.9442,lng:-60.6505,name:"로사리오",country:"아르헨티나",d:'h'},
+  {lat:-30.0346,lng:-51.2177,name:"포르투알레그리",country:"브라질",d:'h'},
+  {lat:-25.4284,lng:-49.2733,name:"쿠리치바",country:"브라질",d:'h'},
+  {lat:-19.9167,lng:-43.9345,name:"벨루오리존치",country:"브라질",d:'h'},
+  {lat:-16.4897,lng:-68.1193,name:"라파스",country:"볼리비아",d:'h'},
+  {lat:-25.2637,lng:-57.5759,name:"아순시온",country:"파라과이",d:'h'},
+  /* ---------- 확장 · 어려움 · 아프리카/오세아니아 ---------- */
+  {lat:31.2001,lng:29.9187,name:"알렉산드리아",country:"이집트",d:'h'},
+  {lat:5.3600,lng:-4.0083,name:"아비장",country:"코트디부아르",d:'h'},
+  {lat:12.6392,lng:-8.0029,name:"바마코",country:"말리",d:'h'},
+  {lat:-4.4419,lng:15.2663,name:"킨샤사",country:"콩고민주공화국",d:'h'},
+  {lat:-15.3875,lng:28.3228,name:"루사카",country:"잠비아",d:'h'},
+  {lat:-17.8252,lng:31.0335,name:"하라레",country:"짐바브웨",d:'h'},
+  {lat:-25.9692,lng:32.5732,name:"마푸투",country:"모잠비크",d:'h'},
+  {lat:-18.8792,lng:47.5079,name:"안타나나리보",country:"마다가스카르",d:'h'},
+  {lat:-25.7479,lng:28.2293,name:"프리토리아",country:"남아공",d:'h'},
+  {lat:-33.9608,lng:25.6022,name:"그케베르하",country:"남아공",d:'h'},
+  {lat:-4.0435,lng:39.6682,name:"몸바사",country:"케냐",d:'h'},
+  {lat:0.4162,lng:9.4673,name:"리브르빌",country:"가봉",d:'h'},
+  {lat:-35.2809,lng:149.1300,name:"캔버라",country:"호주",d:'h'},
+  {lat:-12.4634,lng:130.8456,name:"다윈",country:"호주",d:'h'},
+  {lat:-16.9186,lng:145.7781,name:"케언스",country:"호주",d:'h'},
+  {lat:-45.8788,lng:170.5028,name:"더니든",country:"뉴질랜드",d:'h'},
+  {lat:-22.2758,lng:166.4580,name:"누메아",country:"뉴칼레도니아",d:'h'},
+  {lat:-17.5516,lng:-149.5585,name:"파페에테",country:"프랑스령 폴리네시아",d:'h'},
+  {lat:-9.4438,lng:147.1803,name:"포트모르즈비",country:"파푸아뉴기니",d:'h'},
 ];
 
 const TOTAL_ROUNDS = 5;
@@ -912,6 +1101,12 @@ function haversine(a, b){
             Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
   return 2*R*Math.asin(Math.sqrt(h));
 }
+/* 날짜변경선 보정: ref 경도와 가장 가까운 표현으로 이동 (선·화면 표시용, 점수 계산과 무관) */
+function wrapNear(lng, ref){
+  while(lng - ref > 180) lng -= 360;
+  while(lng - ref < -180) lng += 360;
+  return lng;
+}
 const scoreFor = km => Math.round(MAX_PTS * Math.exp(-km/1500));
 
 /* ================= 시드 난수 (데일리/도전 코스 재현용) ================= */
@@ -982,11 +1177,17 @@ function sndChime(r){ // r: 0~1 점수 비율 — 높을수록 음이 쌓임
 /* 점수 카운트업 애니메이션 (틱 효과음 포함) */
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)');
 function countUp(el, to, {dur = 900, prefix = '', max = MAX_PTS} = {}){
-  const done = () => { el.textContent = prefix + fmt(to); sndChime(Math.min(1, to / max)); };
+  /* 요소가 화면에서 사라졌으면(display:none 조상 포함) 소리 없이 즉시 종료 */
+  const gone = () => !el.offsetParent;
+  const done = () => {
+    el.textContent = prefix + fmt(to);
+    if(!gone()) sndChime(Math.min(1, to / max));
+  };
   if(REDUCED_MOTION.matches || to <= 0){ el.textContent = prefix + fmt(to); if(to > 0) sndChime(to / max); return; }
   const t0 = performance.now();
   let lastTick = 0;
   const step = now => {
+    if(gone()){ el.textContent = prefix + fmt(to); return; } // 화면 전환됨 — 조용히 마무리
     const p = Math.min(1, (now - t0) / dur);
     const eased = 1 - Math.pow(1 - p, 3); // ease-out
     el.textContent = prefix + fmt(Math.round(to * eased));
@@ -1211,14 +1412,112 @@ async function loadPhotos(loc){
   }
 }
 
-function openLightbox(ph){
-  $('lightbox-img').src = ph.full;
-  $('lightbox').classList.remove('hidden');
+/* ================= 라이트박스 확대/이동 =================
+   페이지 줌을 잠갔으므로(뷰포트 meta + gesturestart 차단) 사진 확대는 여기서 자체 처리.
+   핀치·더블탭(2.5배)·휠·확대 상태 드래그 이동 지원, 배경 탭 또는 ✕로 닫기 */
+const lb = $('lightbox'), lbImg = $('lightbox-img');
+let lbScale = 1, lbTx = 0, lbTy = 0;
+const lbPointers = new Map();
+let lbPinch = null, lbPan = null, lbMoved = false;
+let lbLastTap = 0, lbTapX = 0, lbTapY = 0;
+
+function lbApply(){
+  lbImg.style.transform = `translate(${lbTx}px, ${lbTy}px) scale(${lbScale})`;
 }
-$('lightbox').addEventListener('click', ()=>{
-  $('lightbox').classList.add('hidden');
-  $('lightbox-img').src = '';
+function lbReset(){ lbScale = 1; lbTx = 0; lbTy = 0; lbApply(); }
+function lbClamp(){
+  const r = lbImg.getBoundingClientRect(); // 변환 적용된 현재 크기
+  const maxX = Math.max(0, (r.width  - window.innerWidth ) / 2) + 40;
+  const maxY = Math.max(0, (r.height - window.innerHeight) / 2) + 40;
+  lbTx = Math.min(maxX, Math.max(-maxX, lbTx));
+  lbTy = Math.min(maxY, Math.max(-maxY, lbTy));
+}
+/* (x,y) 지점이 화면에 고정되도록 배율을 s1로 변경 */
+function lbZoomAt(x, y, s1){
+  const r = lbImg.getBoundingClientRect();
+  const ux = x - (r.left + r.width / 2);
+  const uy = y - (r.top + r.height / 2);
+  lbTx += ux * (1 - s1 / lbScale);
+  lbTy += uy * (1 - s1 / lbScale);
+  lbScale = s1;
+  if(lbScale <= 1.001) lbReset(); else { lbClamp(); lbApply(); }
+}
+function openLightbox(ph){
+  lbReset();
+  lbImg.src = ph.full;
+  lb.classList.remove('hidden');
+}
+function closeLightbox(){
+  lb.classList.add('hidden');
+  lbImg.src = '';
+  lbReset();
+}
+lb.addEventListener('pointerdown', e=>{
+  lbPointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  lbMoved = false;
+  if(lbPointers.size === 2){
+    const [a, b] = [...lbPointers.values()];
+    lbPinch = {d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, s0: lbScale};
+    lbPan = null;
+  }else if(lbPointers.size === 1 && lbScale > 1){
+    lbPan = {x0:e.clientX, y0:e.clientY, tx0:lbTx, ty0:lbTy};
+  }
 });
+lb.addEventListener('pointermove', e=>{
+  const pt = lbPointers.get(e.pointerId);
+  if(!pt) return;
+  if(Math.hypot(e.clientX - pt.x, e.clientY - pt.y) > 6) lbMoved = true;
+  pt.x = e.clientX; pt.y = e.clientY;
+  if(lbPinch && lbPointers.size === 2){
+    const [a, b] = [...lbPointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+    const s1 = Math.min(4, Math.max(1, lbPinch.s0 * d / lbPinch.d0));
+    lbZoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, s1);
+  }else if(lbPan && lbPointers.size === 1){
+    lbTx = lbPan.tx0 + (e.clientX - lbPan.x0);
+    lbTy = lbPan.ty0 + (e.clientY - lbPan.y0);
+    lbClamp(); lbApply();
+  }
+});
+const lbUp = e=>{
+  lbPointers.delete(e.pointerId);
+  if(lbPointers.size < 2) lbPinch = null;
+  if(lbPointers.size === 0) lbPan = null;
+  else if(lbPointers.size === 1 && lbScale > 1){
+    const p = [...lbPointers.values()][0];
+    lbPan = {x0:p.x, y0:p.y, tx0:lbTx, ty0:lbTy};
+  }
+};
+lb.addEventListener('pointerup', lbUp);
+lb.addEventListener('pointercancel', lbUp);
+/* 이미지 더블탭(더블클릭): 2.5배 ↔ 원본 토글 */
+lbImg.addEventListener('pointerup', e=>{
+  if(lbMoved) return;
+  const now = Date.now();
+  if(now - lbLastTap < 320 && Math.hypot(e.clientX - lbTapX, e.clientY - lbTapY) < 40){
+    lbLastTap = 0;
+    lbZoomAt(e.clientX, e.clientY, lbScale > 1 ? 1 : 2.5);
+  }else{
+    lbLastTap = now; lbTapX = e.clientX; lbTapY = e.clientY;
+  }
+});
+/* 데스크톱 휠 줌 */
+lb.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const s1 = Math.min(4, Math.max(1, lbScale * (e.deltaY < 0 ? 1.15 : 0.87)));
+  lbZoomAt(e.clientX, e.clientY, s1);
+}, {passive:false});
+/* 닫기: 배경 탭(드래그·핀치 직후 클릭은 무시) 또는 ✕ 버튼. 이미지 탭은 줌 전용 */
+lb.addEventListener('click', e=>{
+  if(lbMoved || e.target === lbImg) return;
+  closeLightbox();
+});
+$('lightbox-close').addEventListener('click', closeLightbox);
+
+/* iOS 사파리는 뷰포트 meta의 확대 잠금을 무시하므로 제스처 이벤트로 페이지 핀치줌 차단.
+   (페이지가 확대되면 고정 레이아웃 UI가 화면 밖으로 밀려나고 되돌릴 방법이 없음) */
+document.addEventListener('gesturestart', e=>e.preventDefault());
+document.addEventListener('gesturechange', e=>e.preventDefault());
 $('toggle-photos').addEventListener('click', ()=>{
   $('photo-panel').classList.remove('hidden');
   $('toggle-photos').classList.add('hidden');
@@ -1264,6 +1563,8 @@ let resultAnimToken = 0; // 화면 전환 시 진행 중인 연출 취소용
     줌 보간 중 SVG가 어긋나고 마커가 커져 보이는 문제가 있어 순차 처리) */
 function playResultReveal(guess, answer, onReveal){
   const tok = ++resultAnimToken;
+  // 추측·정답이 날짜변경선을 사이에 두면 선이 지구 반대로 그려지므로 표시 좌표만 보정
+  guess = L.latLng(guess.lat, wrapNear(guess.lng, answer.lng));
   resultLayers.forEach(l=>resultMap.removeLayer(l));
   resultLayers = [
     L.marker(guess,{icon:pinIcon('#FF5347')}).addTo(resultMap)
@@ -1309,7 +1610,8 @@ function confirmGuess(){
   const km = haversine(guess, answer);
   const pts = scoreFor(km);
   totalScore += pts;
-  roundHistory.push({name:loc.name, country:loc.country, km, pts});
+  roundHistory.push({name:loc.name, country:loc.country, km, pts,
+    a:[loc.lat, loc.lng], g:[guess.lat, guess.lng]});
 
   // 결과 화면
   hideRoundUI();
@@ -1340,7 +1642,8 @@ function timeUp(){
   resultAnimToken++; // 진행 중일 수 있는 결과 연출 취소
   const loc = rounds[curRound];
   const answer = L.latLng(loc.lat, loc.lng);
-  roundHistory.push({name:loc.name, country:loc.country, km:null, pts:0});
+  roundHistory.push({name:loc.name, country:loc.country, km:null, pts:0,
+    a:[loc.lat, loc.lng], g:null});
 
   hideRoundUI();
   $('hud-score').textContent = fmt(totalScore);
@@ -1428,16 +1731,25 @@ function escapeHtml(s){
   }[c]));
 }
 
+let recordsToken = 0; // 보드 전환 후 늦게 도착한 순위 응답 무시용
 function renderRecordsList(board, list, isRemote){
+  const tok = ++recordsToken;
   const el = $('records');
   if(!list.length){
     el.innerHTML = `<div class="rec-empty">${labelOfBoard(board)} · 아직 기록이 없어요</div>`;
     return;
   }
-  /* 전 세계 랭킹을 보여줄 때는 하단에 내 최고 기록(로컬)을 함께 표시 */
+  /* 전 세계 랭킹을 보여줄 때는 하단에 내 최고 기록(로컬) + 전체 순위 표시 */
   const myBest = (loadLocalRecords()[board] || [])[0];
   const myBestRow = (isRemote && myBest)
     ? `<div class="rec-mybest mono">내 최고 <b>${fmt(myBest.score)}점</b></div>` : '';
+  if(isRemote && myBest && db){
+    fetchRank(board, myBest.score).then(r=>{
+      if(tok !== recordsToken) return;
+      const m = el.querySelector('.rec-mybest');
+      if(m) m.innerHTML = `내 최고 <b>${fmt(myBest.score)}점</b> · 전체 ${fmt(r.rank)}위`;
+    }).catch(()=>{});
+  }
   el.innerHTML = `
     <div class="rec-best">
       <span class="rec-lbl">${isRemote ? '🌐 전체 TOP 5' : 'TOP 5 (오프라인)'} · ${labelOfBoard(board)}</span>
@@ -1481,16 +1793,18 @@ function saveRecord(board, score, name){
   // 오프라인 대비, 항상 로컬에도 백업
   saveLocalRecord(board, score, cleanName);
   if(db){
-    db.collection('scores').add({
+    const pr = db.collection('scores').add({
       diff: gameMode, board, timed: timerEnabled, name: cleanName, score,
       timer: timerEnabled ? timerSeconds : 0,
       cid: myCid, // 익명 기기 ID — 랭킹에서 내 기록 강조용
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    }).catch(err => console.warn('온라인 랭킹 저장 실패 (로컬에는 저장됨)', err));
+    });
+    pr.catch(err => console.warn('온라인 랭킹 저장 실패 (로컬에는 저장됨)', err));
     // db가 있으면 subscribeRecords의 onSnapshot이 자동으로 화면을 갱신함
-  }else{
-    renderLocalRecords(board);
+    return pr; // 순위 집계가 내 문서 반영 이후 실행되도록 프로미스 반환
   }
+  renderLocalRecords(board);
+  return null;
 }
 
 /* ================= 익명 기기 ID / 시드 게임 제출 이력 / 통계 ================= */
@@ -1552,6 +1866,110 @@ function renderStats(){
     <div class="stat-row"><span>최고 점수</span><b class="mono">${fmt(s.best || 0)}점</b></div>
     <div class="stat-row"><span>평균 오차</span><b class="mono">${avgKm == null ? '—' : (avgKm < 10 ? avgKm.toFixed(1) : fmt(Math.round(avgKm))) + ' km'}</b></div>
     <div class="stat-row"><span>시간 초과</span><b class="mono">${fmt(s.timeouts || 0)}회</b></div>`;
+}
+
+/* ================= 데일리 스트릭 (이 기기 기준 연속 완료) ================= */
+const STREAK_KEY = 'pepes-recon-streak-v1';
+function yesterdayStr(){
+  const d = new Date(); d.setDate(d.getDate() - 1);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`;
+}
+function loadStreak(){
+  try{ return JSON.parse(localStorage.getItem(STREAK_KEY)) || {}; }catch(e){ return {}; }
+}
+function bumpStreak(dateStr){ // 데일리 첫 제출 시 호출
+  try{
+    const s = loadStreak();
+    if(s.last === dateStr) return s;
+    s.streak = (s.last === yesterdayStr()) ? (s.streak || 0) + 1 : 1;
+    s.last = dateStr;
+    s.best = Math.max(s.best || 0, s.streak);
+    localStorage.setItem(STREAK_KEY, JSON.stringify(s));
+    return s;
+  }catch(e){ return {}; }
+}
+function streakText(){
+  const s = loadStreak(), today = todayStr();
+  if(!s.last) return '';
+  if(s.last === today) return `🔥 ${s.streak}일 연속 도전 중` + (s.best > s.streak ? ` · 최고 ${s.best}일` : '');
+  if(s.last === yesterdayStr()) return `🔥 ${s.streak}일 연속 — 오늘 도전하면 ${s.streak + 1}일!`;
+  return s.best > 1 ? `최고 스트릭 ${s.best}일 — 다시 시작해요!` : '';
+}
+
+/* ================= 내 순위 집계 (Firestore count — 기존 board+score 색인 재사용) ================= */
+let finalRankToken = 0; // 이전 게임의 늦은 순위 응답이 새 최종 화면에 표시되는 것 방지
+async function fetchRank(board, score){
+  const col = db.collection('scores');
+  const [above, total] = await Promise.all([
+    col.where('board', '==', board).where('score', '>', score).count().get(),
+    col.where('board', '==', board).count().get()
+  ]);
+  return {rank: above.data().count + 1, total: total.data().count};
+}
+
+/* ================= 이모지 결과 텍스트 ================= */
+function roundEmoji(h){
+  if(h.km == null || h.pts <= 0) return '⬛';
+  if(h.pts >= 4500) return '🟩';
+  if(h.pts >= 3000) return '🟨';
+  if(h.pts >= 1500) return '🟧';
+  return '🟥';
+}
+function buildShareText(){
+  const tiles = roundHistory.map(roundEmoji).join('');
+  const s = loadStreak();
+  const streak = (gameKind === 'daily' && s.last === gameBoard.slice(2) && s.streak >= 2)
+    ? ` · 🔥${s.streak}일` : '';
+  let txt = "PEPE'S // RECON GAME\n"
+    + `${$('final-diff').textContent} · ${fmt(totalScore)}점${streak}\n${tiles}`;
+  if(location.protocol.startsWith('http')) txt += `\n${location.origin}${location.pathname}`;
+  return txt;
+}
+async function copyResultText(){
+  const btn = $('btn-copy-text');
+  try{
+    await navigator.clipboard.writeText(buildShareText());
+    btn.textContent = '✓ 복사 완료 — 붙여넣어 자랑하세요';
+  }catch(e){
+    prompt('아래 텍스트를 복사하세요', buildShareText());
+    return;
+  }
+  setTimeout(()=>btn.textContent = '📋 결과 텍스트 복사', 2200);
+}
+
+/* ================= 라운드 리캡 지도 (5라운드 추측↔정답 한눈에) ================= */
+let recapMap = null, recapLayers = [];
+const rcIcon = n => L.divIcon({className:'', iconSize:[20,20], iconAnchor:[10,10],
+  html:`<div class="rc-a">${n}</div>`});
+function renderRecap(){
+  if(!recapMap){
+    recapMap = L.map('recap-map', {
+      zoomControl:false, attributionControl:true, worldCopyJump:true,
+      scrollWheelZoom:false, doubleClickZoom:false, boxZoom:false, keyboard:false
+    });
+    mapTiles().addTo(recapMap);
+  }
+  recapLayers.forEach(l=>recapMap.removeLayer(l));
+  recapLayers = [];
+  const pts = [];
+  roundHistory.forEach((h, i)=>{
+    const a = L.latLng(h.a[0], h.a[1]);
+    pts.push(a);
+    recapLayers.push(L.marker(a, {icon:rcIcon(i+1), interactive:false, keyboard:false}).addTo(recapMap));
+    if(h.g){
+      const g = L.latLng(h.g[0], wrapNear(h.g[1], h.a[1]));
+      pts.push(g);
+      recapLayers.push(L.circleMarker(g, {radius:4, color:'#FF5347', weight:1.5,
+        fillColor:'#FF5347', fillOpacity:.9, interactive:false}).addTo(recapMap));
+      recapLayers.push(L.polyline([g, a], {color:'#FF5347', weight:1.5,
+        dashArray:'4 6', opacity:.8, interactive:false}).addTo(recapMap));
+    }
+  });
+  setTimeout(()=>{
+    recapMap.invalidateSize();
+    recapMap.fitBounds(L.latLngBounds(pts).pad(0.25), {animate:false});
+  }, 60);
 }
 /* 마지막으로 사용한 난이도/타이머/효과음/이름 기억 (기록과 별도 키로 저장) */
 const PREF_KEY = 'pepes-recon-prefs-v3';
@@ -1629,15 +2047,34 @@ function showFinal(){
   }else vs.classList.add('hidden');
   // 데일리는 코스 유출 방지를 위해 도전장 발송 제외
   $('btn-challenge-link').classList.toggle('hidden', gameKind === 'daily');
+  // 데일리 스트릭
+  if(gameKind === 'daily' && !isPractice){
+    const st = bumpStreak(gameBoard.slice(2));
+    $('final-streak').textContent = st.streak >= 2
+      ? `🔥 ${st.streak}일 연속 데일리!` : '🔥 데일리 스트릭 시작!';
+    $('final-streak').classList.remove('hidden');
+  }else $('final-streak').classList.add('hidden');
+  $('final-myrank').classList.add('hidden');
+  $('btn-copy-text').textContent = '📋 결과 텍스트 복사';
+  const rankTok = ++finalRankToken;
   updateStats();
   if(!isPractice){
-    saveRecord(gameBoard, totalScore, playerName);
+    const saved = saveRecord(gameBoard, totalScore, playerName);
     if(gameKind !== 'normal') markPlayedSeed(gameBoard, totalScore);
+    if(saved && db){
+      saved.then(()=>fetchRank(gameBoard, totalScore)).then(r=>{
+        if(!r || rankTok !== finalRankToken
+          || $('screen-final').classList.contains('hidden')) return;
+        $('final-myrank').textContent = `🌐 전체 ${fmt(r.rank)}위 / ${fmt(r.total)}명`;
+        $('final-myrank').classList.remove('hidden');
+      }).catch(()=>{ /* 집계 실패 시 조용히 생략 (색인 필요할 수 있음) */ });
+    }
   }
   // 시드 게임(데일리/도전)은 재도전이 없으므로 다시하기 버튼 숨김
   $('btn-replay').classList.toggle('hidden', gameKind !== 'normal');
   $('btn-change-diff').textContent = gameKind === 'normal' ? '난이도 변경' : '홈으로';
   $('screen-final').classList.remove('hidden');
+  renderRecap();
   $('final-total').textContent = '0';
   countUp($('final-total'), totalScore, {dur:1300, max: TOTAL_ROUNDS*MAX_PTS});
 }
@@ -1674,6 +2111,9 @@ function updateStartUI(){
         : `이미 완료한 도전이에요 — 내 점수 ${fmt(my)}점`)
     : '';
   $('seed-note').classList.toggle('hidden', !done);
+  const st = selectedDiff === 'daily' ? streakText() : '';
+  $('streak-note').textContent = st;
+  $('streak-note').classList.toggle('hidden', !st);
 }
 function clearChallenge(resub = true){
   if(!challenge) return;
@@ -1805,6 +2245,7 @@ async function copyChallengeLink(){
   setTimeout(()=>btn.textContent = '🔗 도전장 보내기 (이 코스로 대결)', 2400);
 }
 $('btn-challenge-link').addEventListener('click', copyChallengeLink);
+$('btn-copy-text').addEventListener('click', copyResultText);
 $('btn-challenge-dismiss').addEventListener('click', ()=>clearChallenge());
 $('btn-stats').addEventListener('click', ()=>{ renderStats(); $('screen-stats').classList.remove('hidden'); });
 $('btn-stats-close').addEventListener('click', ()=>$('screen-stats').classList.add('hidden'));
@@ -1888,6 +2329,7 @@ setInterval(()=>{
 
 window.addEventListener('resize', ()=>{
   mysteryMap.invalidateSize(); guessMap.invalidateSize(); resultMap.invalidateSize();
+  if(recapMap) recapMap.invalidateSize();
   // 라운드 진행 중 화면 폭이 모바일↔데스크톱 경계를 넘나들면 위치 찍기 버튼 표시 갱신
   const inRound = !$('hud').classList.contains('hidden') && $('screen-result').classList.contains('hidden');
   if(inRound){

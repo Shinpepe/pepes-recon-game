@@ -6,7 +6,7 @@
 <title>Pepe's Recon Game</title>
 <meta name="description" content="사진만 보고 지구 어딘가를 찾아내는 게임. 데일리 챌린지와 친구 도전 링크로 경쟁해 보세요.">
 <meta property="og:title" content="Pepe's Recon Game">
-<meta property="og:description" content="사진만 보고 지구 어디인지를 찾아라! 매일 새로운 데일리 챌린지 · 친구에게 도전장 보내기">
+<meta property="og:description" content="사진만 보고 지구 어딘가를 찾아라! 매일 새로운 데일리 챌린지 · 친구에게 도전장 보내기">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0D1B26">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%8D%3C/text%3E%3C/svg%3E">
@@ -55,7 +55,7 @@
   .btn-ghost:hover{color:var(--paper);border-color:var(--dim)}
 
   /* ---------- 레이어 구조 ---------- */
-  #mystery-map,#screen-start,#screen-result,#screen-final{position:fixed;inset:0}
+  #mystery-map,#screen-start,#screen-result,#screen-final,#screen-stats{position:fixed;inset:0}
   #mystery-map{z-index:1;background:#06121B}
   .screen{z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(9,20,29,.82);backdrop-filter:blur(8px);overflow-y:auto;padding:16px 0}
   /* 카드가 화면보다 길어지면 잘리는 대신 스크롤되도록 margin:auto 중앙정렬 */
@@ -1258,7 +1258,10 @@ function renderCredits(){
 
 let resultLayers = [];
 let resultAnimToken = 0; // 화면 전환 시 진행 중인 연출 취소용
-/* 결과 연출: 내 추측에서 출발 → 카메라 이동 + 점선이 정답까지 그려진 뒤 점수 공개 */
+/* 결과 연출: 화면을 정답·추측이 모두 보이게 먼저 고정한 뒤,
+   점선이 추측 → 정답으로 그려지고 정답 핀이 꽂힘.
+   (이전 방식처럼 카메라 이동과 선 좌표 갱신을 동시에 돌리면
+    줌 보간 중 SVG가 어긋나고 마커가 커져 보이는 문제가 있어 순차 처리) */
 function playResultReveal(guess, answer, onReveal){
   const tok = ++resultAnimToken;
   resultLayers.forEach(l=>resultMap.removeLayer(l));
@@ -1266,39 +1269,32 @@ function playResultReveal(guess, answer, onReveal){
     L.marker(guess,{icon:pinIcon('#FF5347')}).addTo(resultMap)
       .bindTooltip('내 추측',{permanent:true,direction:'top',offset:[0,-30]})
   ];
-  const line = L.polyline([guess, guess],{color:'#FF5347',weight:2,dashArray:'6 8'}).addTo(resultMap);
-  resultLayers.push(line);
   const bounds = L.latLngBounds([guess, answer]).pad(0.35);
+  resultMap.fitBounds(bounds, {animate:false});
+  // 전체 경로를 먼저 그려두고 stroke-dashoffset으로 "그려지는" 효과만 줌 — 좌표가 고정되어 어긋남 없음
+  const line = L.polyline([guess, answer], {color:'#FF5347', weight:2}).addTo(resultMap);
+  resultLayers.push(line);
   const finish = ()=>{
     if(tok !== resultAnimToken) return;
-    line.setLatLngs([guess, answer]);
+    const p = line.getElement();
+    if(p){ p.style.transition = ''; p.style.strokeDasharray = ''; p.style.strokeDashoffset = ''; }
+    line.setStyle({dashArray:'6 8'});
     resultLayers.push(
       L.marker(answer,{icon:pinIcon('#F2C14E')}).addTo(resultMap)
         .bindTooltip('정답',{permanent:true,direction:'top',offset:[0,-30]})
     );
     onReveal();
   };
-  if(REDUCED_MOTION.matches){
-    resultMap.fitBounds(bounds, {animate:false});
-    finish();
-    return;
-  }
-  resultMap.setView(guess, Math.min(resultMap.getBoundsZoom(bounds) + 2, 8), {animate:false});
-  resultMap.flyToBounds(bounds, {duration:1.1});
-  const t0 = performance.now(), dur = 1000;
-  const step = now => {
-    if(tok !== resultAnimToken) return;
-    const p = Math.min(1, (now - t0 - 200) / dur); // 카메라가 먼저 살짝 움직인 뒤 선이 출발
-    if(p >= 0){
-      const e2 = 1 - Math.pow(1 - p, 3);
-      line.setLatLngs([guess, L.latLng(
-        guess.lat + (answer.lat - guess.lat) * e2,
-        guess.lng + (answer.lng - guess.lng) * e2
-      )]);
-    }
-    if(p < 1) requestAnimationFrame(step); else finish();
-  };
-  requestAnimationFrame(step);
+  const path = line.getElement(); // SVG <path>
+  if(REDUCED_MOTION.matches || !path || !path.getTotalLength){ finish(); return; }
+  const len = path.getTotalLength();
+  if(!len){ finish(); return; }
+  path.style.strokeDasharray = `${len}`;
+  path.style.strokeDashoffset = `${len}`;
+  path.getBoundingClientRect(); // 초기 스타일 반영 강제 (transition 시작점 고정)
+  path.style.transition = 'stroke-dashoffset .9s cubic-bezier(.2,.8,.2,1)';
+  path.style.strokeDashoffset = '0';
+  setTimeout(finish, 950);
 }
 function confirmGuess(){
   if(!guessLatLng) return;
